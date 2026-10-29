@@ -1,7 +1,7 @@
 // Shared bits for Module A admin screens.
-import type { ReactNode } from 'react'
+import { useId, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { Button, Badge } from '@/ui'
+import { Button, Badge, LabelScope } from '@/ui'
 import type { Role } from '@/types/entities'
 import type { Tone } from '@/domain/labels'
 import { ROLE_LABEL } from '@/domain/permissions'
@@ -49,14 +49,18 @@ export function SaveBar({ dirty, saving, onSave, onDiscard, label = 'You have un
 
 /** A settings row: label + help on the left, control on the right (stacks on phones). */
 export function SettingRow({ label, help, children, error, stack, id }: { label: ReactNode; help?: ReactNode; children: ReactNode; error?: string | null; stack?: boolean; id?: string }) {
+  // V9-FIX (item 13): the row's label names the control(s) in it, its help / error describes them
+  const uid = useId()
   return (
     <div id={id} className={cn('flex scroll-mt-24 flex-col gap-2.5 px-4 py-3.5 md:px-5', !stack && 'sm:flex-row sm:items-start sm:justify-between sm:gap-6')}>
       <div className="min-w-0 sm:max-w-[52%]">
-        <div className="text-[14px] font-medium text-ink">{label}</div>
-        {help && <div className="mt-0.5 text-[12.5px] leading-snug text-ink-3">{help}</div>}
-        {error && <div className="mt-1 text-[12.5px] font-medium text-danger-text">{error}</div>}
+        <div id={`${uid}l`} className="text-[14px] font-medium text-ink">{label}</div>
+        {help && <div id={`${uid}h`} className="mt-0.5 text-[12.5px] leading-snug text-ink-3">{help}</div>}
+        {error && <div id={`${uid}e`} className="mt-1 text-[12.5px] font-medium text-danger-text">{error}</div>}
       </div>
-      <div className={cn('min-w-0', !stack && 'sm:w-[280px] sm:shrink-0 sm:[&>*]:ml-auto')}>{children}</div>
+      <div className={cn('min-w-0', !stack && 'sm:w-[280px] sm:shrink-0 sm:[&>*]:ml-auto')}>
+        <LabelScope labelId={`${uid}l`} descId={error ? `${uid}e` : help ? `${uid}h` : undefined}>{children}</LabelScope>
+      </div>
     </div>
   )
 }

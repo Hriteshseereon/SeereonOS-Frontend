@@ -27,9 +27,9 @@ export default function ClientsPage() {
   const rows = (d?.items ?? []).filter((c) => (!status || c.status === status) && (!health || c.health === health) && (!search || `${c.name} ${c.industry} ${c.primary_contact}`.toLowerCase().includes(search.toLowerCase())))
 
   const exportT = (): ExportTable => ({
-    title: 'Client register', orientation: 'landscape', category: 'Commercial register',
+    title: 'Customer register', orientation: 'landscape', category: 'Commercial register',
     columns: [
-      { key: 'name', label: 'Client', type: 'string' }, { key: 'industry', label: 'Industry', type: 'string' }, { key: 'status', label: 'Status', type: 'string' }, { key: 'health', label: 'Health', type: 'string' },
+      { key: 'name', label: 'Customer', type: 'string' }, { key: 'industry', label: 'Industry', type: 'string' }, { key: 'status', label: 'Status', type: 'string' }, { key: 'health', label: 'Health', type: 'string' },
       { key: 'owner', label: 'Account manager', type: 'string' }, { key: 'billed', label: 'Billed this FY', type: 'money' }, { key: 'outstanding', label: 'Outstanding', type: 'money' },
       { key: 'contracts', label: 'Live contracts', type: 'money' }, { key: 'renewal', label: 'Next renewal', type: 'date' },
     ],
@@ -39,7 +39,7 @@ export default function ClientsPage() {
 
   const cols: Column<ClientRow>[] = [
     {
-      key: 'name', header: 'Client', sortValue: (c) => c.name.toLowerCase(),
+      key: 'name', header: 'Customer', sortValue: (c) => c.name.toLowerCase(),
       cell: (c) => (
         <div className="min-w-0 max-w-[340px]">
           <div className="truncate font-medium text-ink">{c.name}</div>
@@ -58,12 +58,12 @@ export default function ClientsPage() {
   return (
     <div>
       <PageHeader
-        title="Clients & contracts"
-        subtitle="Who we work for, what they pay us, what they owe, and which contracts need renewing."
+        title="Customers & contracts"
+        subtitle="Who we work for — each customer with its projects, what they pay us, what they owe, and which contracts need renewing."
         actions={
           <>
             <ExportMenu table={d ? exportT : null} filename="clients" />
-            {!readOnly && <Button variant="primary" icon={<Plus className="size-4" />} onClick={() => setAdding(true)} className="flex-1 md:flex-none">Add client</Button>}
+            {!readOnly && <Button variant="primary" icon={<Plus className="size-4" />} onClick={() => setAdding(true)} className="flex-1 md:flex-none">Add customer</Button>}
           </>
         }
       />
@@ -71,7 +71,7 @@ export default function ClientsPage() {
         <SkeletonCards n={4} />
       ) : d ? (
         <KpiRow>
-          <StatCard label="Active clients" value={d.totals.active} sub={`${d.totals.clients} in the register`} />
+          <StatCard label="Active customers" value={d.totals.active} sub={`${d.totals.clients} in the register`} />
           <StatCard label="Billed this FY" value={fmtMoneyCompact(d.totals.billed_fy)} sub="Invoices and consulting income" />
           <StatCard label="Outstanding" value={fmtMoneyCompact(d.totals.outstanding)} tone={d.totals.overdue ? 'warning' : undefined} sub={d.totals.overdue ? `${fmtMoneyCompact(d.totals.overdue)} overdue` : 'Nothing overdue'} />
           <StatCard label="Renewals in 60 days" value={d.totals.renewals_60} tone={d.totals.renewals_60 ? 'warning' : undefined} sub={d.totals.renewals_60 ? `${fmtMoneyCompact(d.totals.renewal_value)} contract value` : 'None due'} />
@@ -81,7 +81,7 @@ export default function ClientsPage() {
       <div className="mt-4 grid gap-4 xl:grid-cols-12">
         <div className="min-w-0 xl:col-span-8">
           <div className="mb-3 flex flex-col gap-2 sm:flex-row">
-            <SearchInput value={search} onChange={setSearch} placeholder="Search client, industry or contact" className="w-full sm:w-72" />
+            <SearchInput value={search} onChange={setSearch} placeholder="Search customer, industry or contact" className="w-full sm:w-72" />
             <div className="grid grid-cols-2 gap-2 sm:flex">
               <Select aria-label="Status" value={status} onChange={(e) => setStatus(e.target.value)} options={[{ value: '', label: 'Any status' }, ...Object.entries(CLIENT_STATUS).map(([value, s]) => ({ value, label: s.label }))]} className="sm:w-40" />
               <Select aria-label="Health" value={health} onChange={(e) => setHealth(e.target.value)} options={[{ value: '', label: 'Any health' }, ...Object.entries(CLIENT_HEALTH).map(([value, s]) => ({ value, label: s.label }))]} className="sm:w-36" />

@@ -17,17 +17,25 @@ import {
   StatusBadge, Tabs, Textarea, Tooltip, useConfirm, useReadOnly, type Column,
 } from '@/ui'
 import { LEAVE_REQ_STATUS } from '@/modules/hr/components'
+import { LeaveDocPicker, LeaveDocs } from './leaveDocs'
+import { attachmentRequired, useLeaveOptions, type LeaveOption } from '@/api/adminSetup'
+import type { LeaveFileInput } from '@/api/hr'
 
 const TYPES = Object.keys(LEAVE_TYPE) as LeaveType[]
 const TYPE_TONE: Record<LeaveType, string> = { casual: 'bg-info', sick: 'bg-warning', earned: 'bg-success', compensatory: 'bg-accent', lwp: 'bg-danger', optional_holiday: 'bg-brand' }
 type Scope = LeaveView['scope']
 type Tab = 'mine' | 'approve' | 'team' | 'records' | 'taken' | 'hr' | 'policy'
 
+/** v9: leave type names — the company's own (custom types, renamed built-ins) from GET /leave/options, else the defaults */
+const NAMES: Record<string, string> = {}
+const lt = (code: string) => NAMES[code] ?? LEAVE_TYPE[code as LeaveType] ?? code
 const range = (r: { from_on: string; to_on: string }) => (r.from_on === r.to_on ? fmtDate(r.from_on) : `${fmtDate(r.from_on)} – ${fmtDate(r.to_on)}`)
 const dayLabel = (n: number) => `${n} day${n === 1 ? '' : 's'}`
 
 /** /leave — balances, apply with approval, approve your team's requests, team calendar, records and policy. */
 export default function LeavePage() {
+  const leaveOpts = useLeaveOptions()
+  for (const t of leaveOpts.data?.types ?? []) NAMES[t.code] = t.name
   const me = useSession((s) => s.user)
   const ro = useReadOnly()
   // ?tab=hr opens "Record leave" directly (Team & settings › Leave links here)
@@ -110,7 +118,7 @@ function BalanceCard({ b, onApply }: { b: LeaveBalance; onApply?: () => void }) 
       <div className="flex items-center justify-between gap-2">
         <span className="flex min-w-0 items-center gap-2 text-[12.5px] font-medium text-ink-3">
           <span className={cn('size-2 shrink-0 rounded-sm', TYPE_TONE[b.type])} />
-          <span className="truncate">{LEAVE_TYPE[b.type]}</span>
+          <span className="truncate">{lt(b.type)}</span>
         </span>
         {onApply && b.remaining > 0 && (
           <button type="button" onClick={onApply} className="hidden shrink-0 text-[12px] font-medium text-brand-text hover:underline sm:inline">
@@ -136,7 +144,7 @@ function useCancel() {
   return async (r: LeaveRequestView) => {
     const ok = await confirm({
       title: 'Cancel this leave request?',
-      body: r.status === 'approved' ? `Your approved ${LEAVE_TYPE[r.type].toLowerCase()} leave (${range(r)}) is removed from the calendar and your timesheet, and the days return to your balance.` : `${LEAVE_TYPE[r.type]} leave, ${range(r)}. Your manager is told.`,
+      body: r.status === 'approved' ? `Your approved ${lt(r.type).toLowerCase()} leave (${range(r)}) is removed from the calendar and your timesheet, and the days return to your balance.` : `${lt(r.type)} leave, ${range(r)}. Your manager is told.`,
       confirmLabel: 'Cancel request',
       cancelLabel: 'Keep it',
       tone: 'danger',
@@ -149,7 +157,15 @@ function MyRequests({ rows, loading, onApply }: { rows?: LeaveRequestView[]; loa
   const ro = useReadOnly()
   const cancel = useCancel()
   const cols: Column<LeaveRequestView>[] = [
-    { key: 'dates', header: 'Dates', sortValue: (r) => r.from_on, cell: (r) => <span className="tnum whitespace-nowrap font-medium">{range(r)}</span> },
+    {
+      key: 'dates', header: 'Dates', sortValue: (r) => r.from_on,
+      cell: (r) => (
+        <div className="min-w-0">
+          <span className="tnum whitespace-nowrap font-medium">{range(r)}</span>
+          <LeaveDocs r={r} manage className="mt-1 max-w-[240px]" />
+        </div>
+      ),
+    },
     { key: 'type', header: 'Type', cell: (r) => <TypeLabel t={r.type} half={r.portion === 'half'} /> },
     { key: 'days', header: 'Days', align: 'right', sortValue: (r) => r.days, cell: (r) => <span className="tnum">{r.days}</span> },
     { key: 'status', header: 'Status', cell: (r) => <StatusBadge size="sm" map={LEAVE_REQ_STATUS} value={r.status} /> },
@@ -177,11 +193,12 @@ function MyRequests({ rows, loading, onApply }: { rows?: LeaveRequestView[]; loa
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="tnum text-[14px] font-medium">{range(r)}</div>
-              <div className="mt-0.5 text-[12.5px] text-ink-3">{LEAVE_TYPE[r.type]} · {r.portion === 'half' ? 'half day' : dayLabel(r.days)}</div>
+              <div className="mt-0.5 text-[12.5px] text-ink-3">{lt(r.type)} · {r.portion === 'half' ? 'half day' : dayLabel(r.days)}</div>
             </div>
             <StatusBadge size="sm" map={LEAVE_REQ_STATUS} value={r.status} />
           </div>
           <p className="text-[13px] text-ink-2">{r.status === 'rejected' && r.decision_reason ? `Rejected: ${r.decision_reason}` : r.reason}</p>
+          <LeaveDocs r={r} manage />
           {r.can_cancel && !ro && (
             <div className="flex justify-end">
               <Button size="sm" variant="ghost" onClick={() => cancel(r)}>Cancel request</Button>
@@ -197,7 +214,7 @@ function TypeLabel({ t, half }: { t: LeaveType; half?: boolean }) {
   return (
     <span className="inline-flex items-center gap-2 whitespace-nowrap">
       <span className={cn('size-2 rounded-sm', TYPE_TONE[t])} />
-      {LEAVE_TYPE[t]}
+      {lt(t)}
       {half && <span className="text-ink-3">· half</span>}
     </span>
   )
@@ -209,7 +226,7 @@ function ToApprove({ rows, loading }: { rows?: LeaveRequestView[]; loading: bool
   const approve = useMut((id: string) => hrApi.approveLeave(id), { invalidate: LEAVE_INVALIDATE, success: 'Leave approved' })
   const reject = useMut((v: { id: string; reason: string }) => hrApi.rejectLeave(v.id, v.reason), { invalidate: LEAVE_INVALIDATE, success: 'Leave rejected' })
   const doReject = async (r: LeaveRequestView) => {
-    const reason = await askReason({ title: `Reject ${r.user_name}’s leave?`, body: `${LEAVE_TYPE[r.type]}, ${range(r)} (${dayLabel(r.days)}). They will see your reason.`, label: 'Reason', placeholder: 'e.g. Release week — can you move it by a few days?', confirmLabel: 'Reject leave', minLength: 5, tone: 'danger' })
+    const reason = await askReason({ title: `Reject ${r.user_name}’s leave?`, body: `${lt(r.type)}, ${range(r)} (${dayLabel(r.days)}). They will see your reason.`, label: 'Reason', placeholder: 'e.g. Release week — can you move it by a few days?', confirmLabel: 'Reject leave', minLength: 5, tone: 'danger' })
     if (reason) reject.mutate({ id: r.id, reason })
   }
   if (loading) return <Skeleton className="h-40 rounded-lg" />
@@ -229,7 +246,7 @@ function ToApprove({ rows, loading }: { rows?: LeaveRequestView[]; loading: bool
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                   <span className="text-[14px] font-medium">{r.user_name}</span>
-                  <Badge size="sm">{LEAVE_TYPE[r.type]}</Badge>
+                  <Badge size="sm">{lt(r.type)}</Badge>
                   {r.via_delegation && <Badge size="sm" tone="info">Delegated to you</Badge>}
                   {stepOf(r) && <Badge size="sm" tone="accent">{stepOf(r)!.split(' · ')[0]}</Badge>}
                 </div>
@@ -237,6 +254,7 @@ function ToApprove({ rows, loading }: { rows?: LeaveRequestView[]; loading: bool
                   {range(r)} · {r.portion === 'half' ? 'half day' : dayLabel(r.days)}
                 </div>
                 <p className="mt-1 text-[13px] text-ink-3">“{r.reason}”</p>
+                <LeaveDocs r={r} className="mt-1.5" />
               </div>
             </div>
             {!ro && r.can_approve && (
@@ -257,7 +275,15 @@ function TeamRequests({ rows, loading }: { rows?: LeaveRequestView[]; loading: b
   const list = (rows ?? []).filter((r) => f === 'all' || r.status === f)
   const cols: Column<LeaveRequestView>[] = [
     { key: 'who', header: 'Person', sortValue: (r) => r.user_name, cell: (r) => <span className="flex min-w-0 items-center gap-2"><Avatar name={r.user_name} hue={r.user_hue} size={24} /><span className="truncate font-medium">{r.user_name}</span></span> },
-    { key: 'dates', header: 'Dates', sortValue: (r) => r.from_on, cell: (r) => <span className="tnum whitespace-nowrap">{range(r)}</span> },
+    {
+      key: 'dates', header: 'Dates', sortValue: (r) => r.from_on,
+      cell: (r) => (
+        <div className="min-w-0">
+          <span className="tnum whitespace-nowrap">{range(r)}</span>
+          <LeaveDocs r={r} className="mt-1 max-w-[220px]" />
+        </div>
+      ),
+    },
     { key: 'type', header: 'Type', cell: (r) => <TypeLabel t={r.type} half={r.portion === 'half'} />, hideBelow: 'lg' },
     { key: 'days', header: 'Days', align: 'right', sortValue: (r) => r.days, cell: (r) => <span className="tnum">{r.days}</span> },
     { key: 'status', header: 'Status', cell: (r) => <StatusBadge size="sm" map={LEAVE_REQ_STATUS} value={r.status} /> },
@@ -281,7 +307,8 @@ function TeamRequests({ rows, loading }: { rows?: LeaveRequestView[]; loading: b
                 <span className="truncate text-[14px] font-medium">{r.user_name}</span>
                 <StatusBadge size="sm" map={LEAVE_REQ_STATUS} value={r.status} />
               </div>
-              <div className="tnum text-[12.5px] text-ink-3">{range(r)} · {LEAVE_TYPE[r.type]} · {dayLabel(r.days)}</div>
+              <div className="tnum text-[12.5px] text-ink-3">{range(r)} · {lt(r.type)} · {dayLabel(r.days)}</div>
+              <LeaveDocs r={r} className="mt-1" />
             </div>
           </div>
         )}
@@ -300,7 +327,7 @@ function Records() {
   const { confirm } = useConfirm()
   const del = useMut((id: string) => workApi.deleteLeave(id), { invalidate: [['leave'], ['timesheet'], ['daily'], ['leave-requests']], success: 'Leave removed' })
   const doDelete = async (l: LeaveRow) => {
-    if (await confirm({ title: 'Remove this leave?', body: `${LEAVE_TYPE[l.type]} (${l.portion === 'half' ? 'half day' : 'full day'}) on ${fmtDate(l.date, 'long')}${l.user_id !== me?.id ? ` for ${l.user_name}` : ''}. The leave row in that week’s timesheet is removed too.`, confirmLabel: 'Remove', tone: 'danger' })) del.mutate(l.id)
+    if (await confirm({ title: 'Remove this leave?', body: `${lt(l.type)} (${l.portion === 'half' ? 'half day' : 'full day'}) on ${fmtDate(l.date, 'long')}${l.user_id !== me?.id ? ` for ${l.user_name}` : ''}. The leave row in that week’s timesheet is removed too.`, confirmLabel: 'Remove', tone: 'danger' })) del.mutate(l.id)
   }
   const cols: Column<LeaveRow>[] = [
     ...(effectiveScope !== 'mine' ? [{ key: 'who', header: 'Person', cell: (l: LeaveRow) => <span className="font-medium">{l.user_name}</span>, sortValue: (l: LeaveRow) => l.user_name } as Column<LeaveRow>] : []),
@@ -340,7 +367,7 @@ function Records() {
             <div className="min-w-0 flex-1">
               <div className="flex min-w-0 items-center gap-2 text-[14px] font-medium">
                 <span className={cn('size-2 shrink-0 rounded-sm', TYPE_TONE[l.type])} />
-                <span className="truncate">{effectiveScope !== 'mine' ? `${l.user_name} · ` : ''}{LEAVE_TYPE[l.type]}</span>
+                <span className="truncate">{effectiveScope !== 'mine' ? `${l.user_name} · ` : ''}{lt(l.type)}</span>
               </div>
               <div className="truncate text-[12.5px] text-ink-3">{l.portion === 'half' ? 'Half day' : 'Full day'} · {l.source === 'hr' ? 'approved / HR' : 'from timesheet'}</div>
             </div>
@@ -363,7 +390,7 @@ function Policy({ policies, canEdit, loading }: { policies?: LeavePolicy[]; canE
     { key: 'annual', header: 'Days a year', align: 'right', cell: (p) => <span className="tnum">{p.annual_days}</span> },
     { key: 'accrual', header: 'Credited', cell: (p) => (p.accrual === 'monthly' ? 'Monthly (1/12 each month)' : 'At the start of the year') },
     { key: 'carry', header: 'Carry forward', align: 'right', cell: (p) => <span className="tnum">{p.carry_forward_max ? `up to ${p.carry_forward_max}` : 'None'}</span> },
-    { key: 'act', header: '', align: 'right', width: '56px', cell: (p) => (canEdit ? <IconButton label={`Edit ${LEAVE_TYPE[p.type]} policy`} size="sm" onClick={() => setEdit(p)}><Pencil className="size-4" /></IconButton> : null) },
+    { key: 'act', header: '', align: 'right', width: '56px', cell: (p) => (canEdit ? <IconButton label={`Edit ${lt(p.type)} policy`} size="sm" onClick={() => setEdit(p)}><Pencil className="size-4" /></IconButton> : null) },
   ]
   return (
     <div className="space-y-3">
@@ -380,7 +407,7 @@ function Policy({ policies, canEdit, loading }: { policies?: LeavePolicy[]; canE
                 <span className="tnum">{p.annual_days}</span> days · {p.accrual === 'monthly' ? 'monthly' : 'upfront'} · carry {p.carry_forward_max ? `up to ${p.carry_forward_max}` : 'none'}
               </div>
             </div>
-            {canEdit && <IconButton label={`Edit ${LEAVE_TYPE[p.type]} policy`} onClick={() => setEdit(p)}><Pencil className="size-4" /></IconButton>}
+            {canEdit && <IconButton label={`Edit ${lt(p.type)} policy`} onClick={() => setEdit(p)}><Pencil className="size-4" /></IconButton>}
           </div>
         )}
       />
@@ -404,7 +431,7 @@ function PolicyDialog({ p, onClose }: { p: LeavePolicy; onClose: () => void }) {
       open
       onOpenChange={(o) => !o && onClose()}
       size="sm"
-      title={`${LEAVE_TYPE[p.type]} leave policy`}
+      title={`${lt(p.type)} leave policy`}
       description="Changes apply to balances right away for everyone."
       footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={save.isPending} onClick={() => save.mutate(undefined)}>Save policy</Button></>}
     >
@@ -433,27 +460,40 @@ function ApplyDialog({ open, onOpenChange, initialType, balances }: { open: bool
   const [from, setFrom] = useState(t0)
   const [to, setTo] = useState(t0)
   const [reason, setReason] = useState('')
+  const [files, setFiles] = useState<LeaveFileInput[]>([])
   const [errs, setErrs] = useState<Record<string, string>>({})
   const bal = balances.find((b) => b.type === type)
-  const save = useMut(() => hrApi.applyLeave({ from_on: from, to_on: portion === 'half' ? from : to, type, portion, reason }), {
+  const leaveOpts = useLeaveOptions()
+  const opt: LeaveOption | undefined = leaveOpts.data?.types.find((x) => x.code === type)
+  // weekdays in the range (a display hint for the document rule; the server counts the company calendar)
+  const approxDays = portion === 'half' ? 0.5 : (() => {
+    let n = 0
+    for (let d = from; d && d <= (to || from); d = addDays(d, 1)) if (![0, 6].includes(parseISO(d).getDay())) n++
+    return n
+  })()
+  const needDoc = attachmentRequired(opt, approxDays)
+  const save = useMut(() => hrApi.applyLeave({ from_on: from, to_on: portion === 'half' ? from : to, type, portion, reason, ...(files.length ? { attachments: files } : {}) }), {
     invalidate: LEAVE_INVALIDATE,
     success: (r) => (r.status === 'approved' ? 'Leave recorded' : 'Leave request sent to your manager'),
     silentError: true,
     onSuccess: () => onOpenChange(false),
-    onError: (e: ApiError) => setErrs(e.field ? { [e.field]: e.message } : { form: e.message }),
+    onError: (e: ApiError) => setErrs(e.field ? { [e.field === 'attachment' ? 'attachments' : e.field]: e.message } : { form: e.message }),
   })
   const submit = () => {
     const e: Record<string, string> = {}
     if (!from) e.from_on = 'Pick the first day.'
     if (portion === 'full' && to < from) e.to_on = 'The last day is before the first day.'
     if (reason.trim().length < 5) e.reason = 'Give a reason of at least 5 characters.'
+    if (needDoc && !files.length) e.attachments = opt?.attachment_rule ?? 'Attach a supporting document.'
     setErrs(e)
     if (!Object.keys(e).length) save.mutate(undefined)
   }
-  const typeOpts = TYPES.map((t) => {
-    const b = balances.find((x) => x.type === t)
-    return { value: t, label: b ? `${LEAVE_TYPE[t]} — ${b.remaining} left` : LEAVE_TYPE[t] }
-  })
+  const typeOpts = leaveOpts.data
+    ? leaveOpts.data.types.map((t) => ({ value: t.code, label: t.balance ? `${t.name} — ${t.balance.remaining} left` : t.name }))
+    : TYPES.map((t) => {
+        const b = balances.find((x) => x.type === t)
+        return { value: t, label: b ? `${lt(t)} — ${b.remaining} left` : lt(t) }
+      })
   return (
     <Dialog
       open={open}
@@ -484,11 +524,14 @@ function ApplyDialog({ open, onOpenChange, initialType, balances }: { open: bool
         <Field label="Reason" required error={errs.reason} hint="Your manager sees this.">
           <Textarea value={reason} invalid={!!errs.reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Family function in Cuttack" />
         </Field>
+        <Field label="Supporting documents" required={needDoc} hint={`${opt?.attachment_rule ? `${opt.attachment_rule} ` : ''}Only you, your approvers and HR can open them.`}>
+          <LeaveDocPicker files={files} onChange={setFiles} error={errs.attachments} onError={(m) => setErrs((x) => ({ ...x, attachments: m ?? '' }))} />
+        </Field>
         {type === 'lwp' ? (
           <Callout tone="warning">Leave without pay is deducted in payroll (base ÷ working days, per day).</Callout>
         ) : bal ? (
           <p className="text-[12.5px] text-ink-3">
-            <span className="tnum">{bal.remaining}</span> {LEAVE_TYPE[type].toLowerCase()} day{bal.remaining === 1 ? '' : 's'} left ({bal.used} used, {bal.pending} pending).
+            <span className="tnum">{bal.remaining}</span> {lt(type).toLowerCase()} day{bal.remaining === 1 ? '' : 's'} left ({bal.used} used, {bal.pending} pending).
           </p>
         ) : null}
         {errs.form && <Callout tone="danger">{errs.form}</Callout>}
@@ -541,7 +584,7 @@ function MonthCalendar({ month, onMonth, view, meId }: { month: string; onMonth:
           const ls = leaveBy.get(d) ?? []
           const mine = ls.find((l) => l.user_id === meId)
           const others = ls.filter((l) => l.user_id !== meId)
-          const tip = [h ? `Holiday: ${h.name}` : null, off ? 'Weekly off' : null, ...ls.map((l) => `${l.user_id === meId ? 'You' : l.user_name}: ${LEAVE_TYPE[l.type]}${l.portion === 'half' ? ' (half)' : ''}`)].filter(Boolean).join('\n')
+          const tip = [h ? `Holiday: ${h.name}` : null, off ? 'Weekly off' : null, ...ls.map((l) => `${l.user_id === meId ? 'You' : l.user_name}: ${lt(l.type)}${l.portion === 'half' ? ' (half)' : ''}`)].filter(Boolean).join('\n')
           const cell = (
             <div
               className={cn(
@@ -566,7 +609,7 @@ function MonthCalendar({ month, onMonth, view, meId }: { month: string; onMonth:
       </div>
       <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-[12px] text-ink-3">
         {TYPES.map((t) => (
-          <span key={t} className="flex items-center gap-1.5"><span className={cn('size-2 rounded-sm', TYPE_TONE[t])} />{LEAVE_TYPE[t]}</span>
+          <span key={t} className="flex items-center gap-1.5"><span className={cn('size-2 rounded-sm', TYPE_TONE[t])} />{lt(t)}</span>
         ))}
         <span className="flex items-center gap-1.5"><span className="size-2.5 rounded-sm bg-accent-soft ring-1 ring-accent/30" />Holiday</span>
       </div>
@@ -630,7 +673,7 @@ function AddLeaveDialog({ open, onOpenChange, hr }: { open: boolean; onOpenChang
         )}
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Type" required>
-            <Select value={type} onChange={(e) => setType(e.target.value as LeaveType)} options={TYPES.map((t) => ({ value: t, label: LEAVE_TYPE[t] }))} />
+            <Select value={type} onChange={(e) => setType(e.target.value as LeaveType)} options={TYPES.map((t) => ({ value: t, label: lt(t) }))} />
           </Field>
           <Field label="Portion">
             <Segmented block value={portion} onChange={setPortion} options={[{ value: 'full', label: 'Full day' }, { value: 'half', label: 'Half day' }]} />
@@ -668,7 +711,7 @@ function TakenThisYear() {
   type Row = TakenSummary['rows'][number]
   const val = (r: Row, k: (typeof SUMMARY_COLS)[number][0]) => (k === 'half' ? r.half_days : k === 'ts' ? r.timesheet_days : r.by_type[k])
   const cell = (n: number) => (n ? <span className="tnum">{n % 1 ? n.toFixed(1) : n}</span> : <span className="text-ink-3/50">—</span>)
-  const plannedTip = (r: Row) => r.planned.dates.map((x) => `${fmtDate(x.date)} · ${LEAVE_TYPE[x.type]}${x.portion === 'half' ? ' (half day)' : ''}`).join('\n')
+  const plannedTip = (r: Row) => r.planned.dates.map((x) => `${fmtDate(x.date)} · ${lt(x.type)}${x.portion === 'half' ? ' (half day)' : ''}`).join('\n')
   const cols: Column<Row>[] = [
     { key: 'who', header: 'Person', sortValue: (r) => r.user.name, cell: (r) => <span className="font-medium">{r.user.name}</span> },
     ...SUMMARY_COLS.map(([k, label]) => ({ key: k, header: label, align: 'right' as const, width: '96px', sortValue: (r: Row) => val(r, k), cell: (r: Row) => cell(val(r, k)) })),
@@ -757,7 +800,7 @@ function HrEntry() {
           <Input type="date" value={to} min={from || undefined} invalid={!!errs.to} onChange={(e) => setTo(e.target.value)} />
         </Field>
         <Field label="Type">
-          <Select value={type} onChange={(e) => setType(e.target.value as LeaveType)} options={TYPES.map((t) => ({ value: t, label: LEAVE_TYPE[t] }))} />
+          <Select value={type} onChange={(e) => setType(e.target.value as LeaveType)} options={TYPES.map((t) => ({ value: t, label: lt(t) }))} />
         </Field>
       </div>
       {errs.form && <p className="mt-2 text-[13px] text-danger-text">{errs.form}</p>}
@@ -778,7 +821,7 @@ function HrEntry() {
             <div key={l.id} className="flex min-h-[48px] items-center gap-3 py-2">
               <div className="min-w-0 flex-1 text-[13.5px]">
                 <span className="font-semibold text-ink">{l.user_name}</span> <span className="whitespace-nowrap text-ink-2">{fmtDate(l.date, 'long')}</span>
-                <span className="ml-1.5 text-[12.5px] text-ink-3">· {LEAVE_TYPE[l.type]}{l.portion === 'half' ? ' · half day' : ''}</span>
+                <span className="ml-1.5 text-[12.5px] text-ink-3">· {lt(l.type)}{l.portion === 'half' ? ' · half day' : ''}</span>
               </div>
               {l.can_delete && !ro && (
                 <Button size="sm" variant="secondary" loading={del.isPending && del.variables === l.id} onClick={async () => (await confirm({ title: 'Remove this leave?', body: `${l.user_name}, ${fmtDate(l.date, 'long')}. The leave row in their timesheet is removed too.`, confirmLabel: 'Remove', tone: 'danger' })) && del.mutate(l.id)}>

@@ -28,7 +28,7 @@ export default function InvoicesPage() {
   const [client, setClient] = useState(params.get('client') ?? '')
   const [project, setProject] = useState(params.get('project') ?? '')
   const [search, setSearch] = useState('')
-  const [settings, setSettings] = useState(false)
+  const [settings, setSettings] = useState(() => params.get('settings') === '1') // v9: Admin setup links here
   const d = q.data
 
   const clients = useMemo(() => [...new Set((d?.items ?? []).map((x) => x.client).filter(Boolean))].sort(), [d])

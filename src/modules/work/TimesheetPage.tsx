@@ -12,7 +12,8 @@ import { cn } from '@/lib/utils'
 import { useUI } from '@/stores/ui'
 import { Button, Callout, Card, Dialog, ErrorState, Field, IconButton, Menu, PageHeader, Segmented, Select, Skeleton, StatusBadge, toast, useConfirm, useReadOnly } from '@/ui'
 import { DayList, DayPills, DesktopGrid, EMPTY_DRAFT, futureLocked, Legend, visibleDays, type EmptyDraft } from './WeekGrid'
-import { countedTotal, fromItem, fromView, leaveLabel, round2, rowTotal, signature, toInput, type DraftRow } from './timesheetModel'
+import { countedTotal, draftProblem, fromItem, fromView, isProjectWork, leaveLabel, round2, rowTotal, signature, toInput, type DraftRow } from './timesheetModel'
+import { ApiError } from '@/api/http'
 import { DailyLog } from './DailyUpdatePage'
 
 /** "Sun, 4 Oct" */
@@ -230,8 +231,13 @@ function Editor({ view, refetch }: { view: WeekView; refetch: () => void }) {
   }
   const onErr = (e: { code: string }) => e.code === 'STALE' && refetch()
 
-  const save = useMut(() => workApi.saveWeek(view.week_start, toInput(rows), view.version), { success: 'Draft saved', onSuccess: (v) => (accept(v), invalidateOthers()), onError: onErr })
-  const submit = useMut(() => workApi.submitWeek(view.week_start, dirty ? toInput(rows) : null, view.version), {
+  // v9 (D5): project work rows need their project and a description (the server checks too)
+  const checked = () => {
+    const p = draftProblem(rows)
+    if (p) throw new ApiError(422, 'VALIDATION', p)
+  }
+  const save = useMut(async () => (checked(), workApi.saveWeek(view.week_start, toInput(rows), view.version)), { success: 'Draft saved', onSuccess: (v) => (accept(v), invalidateOthers()), onError: onErr })
+  const submit = useMut(async () => (dirty && checked(), workApi.submitWeek(view.week_start, dirty ? toInput(rows) : null, view.version)), {
     success: (v) => ((v as WeekView & { approver_name?: string | null }).approver_name ? `Submitted to ${(v as WeekView & { approver_name?: string }).approver_name} for approval` : 'Submitted and approved'),
     onSuccess: (v) => (accept(v), invalidateOthers()),
     onError: onErr,
@@ -281,7 +287,10 @@ function Editor({ view, refetch }: { view: WeekView; refetch: () => void }) {
     setRows(next)
     setEmpty(EMPTY_DRAFT)
     focusRow(next.length - 1)
-    if (it.kind === 'internal' && it.internal_code !== 'breaks' && view.rules.note_required && !extra.note.trim()) toast.message('Add a note saying what the time was for.')
+    const row = next[next.length - 1]
+    if (isProjectWork(row)) {
+      if (!row.project_id || !extra.note.trim()) toast.message('Project work without a task: choose the project and describe the work.')
+    } else if (it.kind === 'internal' && it.internal_code !== 'breaks' && view.rules.note_required && !extra.note.trim()) toast.message('Add a note saying what the time was for.')
   }
   // /timesheet/:week?task=<id> (e.g. "Log time" on a task): add that task's row once, then drop the parameter
   const [tsp, setTsp] = useSearchParams()

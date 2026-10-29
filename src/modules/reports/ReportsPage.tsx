@@ -1,5 +1,5 @@
-// /reports — library: Pinned, My reports, Shared, System templates as cards with mini chart
-// previews; search; New report; Ask AI.
+// /reports — v9: the report catalogue (types by category → builder → result) on top, then the library: Pinned, My
+// reports, Shared, System templates as cards with mini chart previews; search; Custom report (any dataset); Ask AI.
 import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Copy, FileBarChart, MoreHorizontal, Pencil, Pin, PinOff, Plus, Share2, Sparkles, Trash2, Users } from '@/ui/icons'
@@ -12,6 +12,7 @@ import { relTime } from '@/domain/calendar'
 import { CHART_LABEL } from '@/reports/datasets'
 import { cn } from '@/lib/utils'
 import { MiniChart } from './components/ReportVisual'
+import { TypeCatalogue } from './types/TypeCatalogue'
 
 type Tab = 'all' | 'pinned' | 'mine' | 'shared' | 'system'
 
@@ -69,8 +70,8 @@ function ReportCard({ r }: { r: SavedReportView }) {
         <MiniChart preview={r.preview} kind={r.spec.chart} />
       </div>
       <div className="pointer-events-none relative mt-auto flex flex-wrap items-center gap-1.5 border-t border-line px-4 py-2.5 text-[11.5px] text-ink-3">
-        <Badge size="sm" tone="neutral">{r.source === 'system' ? 'Template' : r.source === 'ai' ? 'AI' : 'Custom'}</Badge>
-        <span>{CHART_LABEL[r.spec.chart]}</span>
+        <Badge size="sm" tone="neutral">{r.report_type ? r.dataset_label.split(' · ')[0] : r.source === 'system' ? 'Template' : r.source === 'ai' ? 'AI' : 'Custom'}</Badge>
+        <span>{r.report_type ? r.dataset_label.split(' · ')[1] : CHART_LABEL[r.spec.chart]}</span>
         {r.shared && r.source !== 'system' && (
           <span>· Shared</span>
         )}
@@ -117,7 +118,7 @@ export default function ReportsPage() {
     <div>
       <PageHeader
         title="Reports"
-        subtitle="Saved reports re-run on live data. Build your own, or ask in plain English."
+        subtitle="Financial, attendance, salary, task, project and timesheet reports — computed live, exportable, saved for later."
         actions={
           <>
             {c('ai.use') && (
@@ -126,13 +127,15 @@ export default function ReportsPage() {
               </Button>
             )}
             {c('reports.build') && (
-              <Button variant="primary" icon={<Plus className="size-4" />} onClick={() => nav('/reports/new')}>
-                New report
+              <Button icon={<Plus className="size-4" />} onClick={() => nav('/reports/new')}>
+                Custom report
               </Button>
             )}
           </>
         }
       />
+      <TypeCatalogue />
+      <h2 className="mb-3 text-[15px] font-semibold text-ink">Saved reports</h2>
       <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center">
         <SearchInput value={search} onChange={setSearch} placeholder="Search reports" className="md:w-[320px]" />
         <FilterChips

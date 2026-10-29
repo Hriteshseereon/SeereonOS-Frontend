@@ -14,7 +14,6 @@ import { fmtMoney, fmtPct } from '@/domain/money'
 import { debounce, cn } from '@/lib/utils'
 import { Badge, Button, Callout, Can, Card, EmptyState, ErrorState, FilterChips, PageHeader, PersonName, Progress, SearchInput, Select, SkeletonRows, StatusBadge, useCan, useReadOnly } from '@/ui'
 import { TONE_TEXT } from '@/ui/data'
-import { ProjectFormDialog } from './components/ProjectFormDialog'
 import { marginTone, MsStateBadge, PROJECT_STATUS_MEANING, PROJECT_STATUS_ORDER, ProjectStatusMenu, StatusMeaningsPopover, useProjectStatusChange } from './components/shared'
 
 const SORTS: { value: NonNullable<ProjectListQuery['sort']>; label: string }[] = [
@@ -31,12 +30,12 @@ const TD = 'px-1.5 min-[1400px]:px-2 py-3'
 export default function ProjectsPage() {
   const can = useCan()
   const readOnly = useReadOnly()
+  const nav = useNavigate()
   const [status, setStatus] = useState<ProjectStatus | 'all'>('all')
   const [q, setQ] = useState('')
   const [qd, setQd] = useState('')
   const [type, setType] = useState<ProjectType | ''>('')
   const [sort, setSort] = useState<NonNullable<ProjectListQuery['sort']>>('priority')
-  const [creating, setCreating] = useState(false)
   const [open, setOpen] = useState<string | null>(null)
   const debounced = useMemo(() => debounce((v: string) => setQd(v), 220), [])
   const query = useApi(['projects', { status, q: qd, type, sort }], () => projectsApi.list({ status, q: qd, type, sort }), { placeholderData: (p) => p })
@@ -63,7 +62,7 @@ export default function ProjectsPage() {
         subtitle={counts ? `${openCount} open, ${doneCount} completed or closed. Click a project to expand it.` : 'Delivery, milestones and money in one place.'}
         actions={
           <Can action="projects.create">
-            <Button variant="primary" icon={<Plus className="size-4" />} disabled={readOnly} onClick={() => setCreating(true)} className="max-md:w-full">
+            <Button variant="primary" icon={<Plus className="size-4" />} disabled={readOnly} onClick={() => nav('/projects/new')} className="max-md:w-full">
               Create project
             </Button>
           </Can>
@@ -113,7 +112,7 @@ export default function ProjectsPage() {
               icon={<FolderKanban />}
               title="No projects yet"
               body={can('projects.create') ? 'Create your first project with its milestones and costing plan.' : 'Projects you work on will appear here.'}
-              action={can('projects.create') && !readOnly ? <Button variant="primary" icon={<Plus className="size-4" />} onClick={() => setCreating(true)}>Create project</Button> : undefined}
+              action={can('projects.create') && !readOnly ? <Button variant="primary" icon={<Plus className="size-4" />} onClick={() => nav('/projects/new')}>Create project</Button> : undefined}
             />
           )}
         </Card>
@@ -213,7 +212,6 @@ export default function ProjectsPage() {
           </ul>
         </>
       )}
-      <ProjectFormDialog open={creating} onOpenChange={setCreating} />
     </div>
   )
 }

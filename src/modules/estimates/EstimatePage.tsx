@@ -5,7 +5,12 @@
 // Every number comes from the server (POST /estimates/preview while editing, GET /estimates/:id when saved).
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { AlertTriangle, BarChart3, EyeOff, Columns3, Copy, Download, FileText, GitBranch, MoreHorizontal, Rocket, Save, Share2, Table2, Trash2, Trophy, Undo2, XCircle } from '@/ui/icons'
+import { AlertTriangle, BarChart3, ChevronDown, EyeOff, Columns3, Copy, Download, FileText, GitBranch, MoreHorizontal, Plus, Rocket, Save, Share2, Table2, Trash2, Trophy, Undo2, XCircle } from '@/ui/icons'
+import { useCustomerOptions } from '@/api/projectWizard'
+import { CustomerSummary } from '@/modules/projects/wizard/WizardSteps'
+import { CommercialsEditor } from '@/modules/projects/costing/CommercialsEditor'
+import { PeopleShare } from '@/modules/projects/costing/PeopleShare'
+import { newKey } from '@/modules/projects/costing/costingDraft'
 import type { BillingModel, ProjectType, RevenueStream } from '@/types/entities'
 import type { Tone } from '@/domain/labels'
 import { ApiError } from '@/api/http'
@@ -19,15 +24,14 @@ import { fmtMoney, fmtMoneyExact, fmtNum, fmtPct } from '@/domain/money'
 import { useSession } from '@/stores/session'
 import { cn } from '@/lib/utils'
 import {
-  Badge, BarChart, Button, Callout, Card, CardHeader, ChartTable, Combobox, ErrorState, Field, IconButton, Input, Menu, PageHeader, Segmented, Select, Skeleton, SkeletonRows, StatusBadge, Textarea, TONE_TEXT,
+  Badge, BarChart, Button, Callout, Card, CardHeader, ChartTable, Combobox, ErrorState, Field, IconButton, Input, Menu, MoneyInput, PageHeader, Segmented, Select, Skeleton, SkeletonRows, StatusBadge, Textarea, TONE_TEXT,
   toast, useConfirm, useReadOnly,
 } from '@/ui'
-import { CalendarLine, CostingEditor } from '@/modules/projects/costing/CostingEditor'
+import { CalendarLine } from '@/modules/projects/costing/CostingEditor'
 import { CostChain } from '@/modules/projects/costing/CostChain'
 import { ResourceRows } from './ResourceRows'
-import { ConvertDialog } from './ConvertDialog'
 import { ESTIMATE_STATUS, marginTone } from './labels'
-import { blankDraft, calcInput, draftFromDetail, milestonesOf, saveInput, useEstimatePreview, type EstDraft } from './estimateDraft'
+import { addPasted, blankDraft, calcInput, draftFromDetail, milestonesOf, saveInput, useEstimatePreview, type EstDraft } from './estimateDraft'
 import { exportClientQuote, exportInternalCosting } from './exportPdf'
 
 const DEFAULT_STREAM: Record<string, RevenueStream> = { product: 'products', service: 'services', saas: 'saas', ams: 'ams' }
@@ -151,7 +155,8 @@ function Editor({
   const people = usePeopleMap()
   const { tenant } = useSession()
   const { confirm, askReason } = useConfirm()
-  const [converting, setConverting] = useState(false)
+  const customers = useCustomerOptions()
+  const [pasteOpen, setPasteOpen] = useState(false)
   const [chart, setChart] = useState<'chart' | 'table'>('table')
   const e = d?.estimate
   const locked = !!e && e.status === 'converted'
@@ -218,6 +223,7 @@ function Editor({
   }
 
   const t = pv?.totals
+  const pickedCustomer = draft.client_id ? customers.data?.items.find((c) => c.id === draft.client_id) ?? null : null
   const saved = !isNew && !dirty
   const needSave = isNew ? 'Save the estimate first' : dirty ? 'Save your changes first' : undefined
   const st = e?.status
@@ -274,7 +280,7 @@ function Editor({
               />
             )}
             {e && d?.can_convert && (
-              <Button icon={<Rocket className="size-4" />} disabled={readOnlyRole || !saved} title={needSave} onClick={() => setConverting(true)} className="flex-1 md:flex-none">
+              <Button icon={<Rocket className="size-4" />} disabled={readOnlyRole || !saved} title={needSave} onClick={() => nav(`/projects/new?estimate=${e.id}`)} className="flex-1 md:flex-none">
                 Convert to project
               </Button>
             )}
@@ -317,31 +323,39 @@ function Editor({
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="min-w-0 space-y-4">
-          {/* ---------------- details ---------------- */}
+          {/* v9 (item 6): Project name › Customer › Project type › Resources › Commercials › Milestone-wise price */}
+          {/* ---------------- 1. project name ---------------- */}
           <Card>
-            <CardHeader title="Details" subtitle="Who it is for, when, and how it will be billed." />
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
-              <Field label="Estimate name" required error={errors.name} className="sm:col-span-2 lg:col-span-6">
-                <Input value={draft.name} disabled={readOnly} invalid={!!errors.name} placeholder="e.g. Acme Ltd — customer portal rollout" onChange={(ev) => set('name', ev.target.value)} />
-              </Field>
-              <Field label="Client or prospect" required error={errors.client} className="sm:col-span-2 lg:col-span-3">
-                <Input value={draft.client} disabled={readOnly} invalid={!!errors.client} placeholder="Company name" onChange={(ev) => setDraft({ ...draft, client: ev.target.value, client_id: null })} />
-              </Field>
-              <Field label="Or pick from clients" className="sm:col-span-2 lg:col-span-3">
+            <CardHeader title="1. Project" />
+            <Field label="Project name" required error={errors.name} htmlFor="est-name">
+              <Input id="est-name" value={draft.name} disabled={readOnly} invalid={!!errors.name} placeholder="e.g. Customer portal rollout" onChange={(ev) => set('name', ev.target.value)} />
+            </Field>
+          </Card>
+
+          {/* ---------------- 2. customer ---------------- */}
+          <Card>
+            <CardHeader title="2. Customer" subtitle="Pick a customer to see their details, or type a prospect’s name." />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Customer" htmlFor="est-customer">
                 <Combobox
+                  id="est-customer"
                   value={draft.client_id}
                   disabled={readOnly}
                   clearable
-                  placeholder="Choose a client"
-                  searchPlaceholder="Search clients"
-                  options={(opts?.clients ?? []).map((c) => ({ value: c.id, label: c.name }))}
-                  onChange={(v) => setDraft({ ...draft, client_id: v, client: v ? opts?.clients.find((c) => c.id === v)?.name ?? draft.client : draft.client })}
+                  placeholder="Choose a customer"
+                  searchPlaceholder="Search customers"
+                  options={(customers.data?.items ?? opts?.clients.map((c) => ({ id: c.id, name: c.name, gstin: '', city: '' })) ?? []).map((c) => ({ value: c.id, label: c.name, hint: [c.gstin, c.city].filter(Boolean).join(' · ') || undefined }))}
+                  onChange={(v) => setDraft({ ...draft, client_id: v, client: v ? (customers.data?.items.find((c) => c.id === v)?.name ?? opts?.clients.find((c) => c.id === v)?.name ?? draft.client) : draft.client })}
                 />
               </Field>
+              <Field label="Or a prospect" required={!draft.client_id} error={errors.client} htmlFor="est-client" hint="Not a customer yet? Type the company name.">
+                <Input id="est-client" value={draft.client_id ? '' : draft.client} disabled={readOnly || !!draft.client_id} invalid={!!errors.client} placeholder={draft.client_id ? 'Customer picked' : 'Company name'} onChange={(ev) => setDraft({ ...draft, client: ev.target.value, client_id: null })} />
+              </Field>
+              {pickedCustomer && <div className="sm:col-span-2"><CustomerSummary c={pickedCustomer} /></div>}
               <Field
                 label="Pipeline deal"
-                className="sm:col-span-2 lg:col-span-6"
-                hint={opts && !opts.deals.length ? 'No deals you can see. You can still estimate without one.' : 'Optional. Picking a deal fills in the client and uses the deal value as the price.'}
+                className="sm:col-span-2"
+                hint={opts && !opts.deals.length ? 'No deals you can see. You can still estimate without one.' : 'Optional. Picking a deal fills in the customer and uses the deal value as the price.'}
               >
                 <Combobox
                   value={draft.deal_id}
@@ -356,93 +370,119 @@ function Editor({
                   onChange={pickDeal}
                 />
               </Field>
+            </div>
+          </Card>
+
+          {/* ---------------- 3. project type ---------------- */}
+          <Card>
+            <CardHeader title="3. Project type" subtitle="Type, commercial model and the period the estimate covers." />
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
               <Field label="Project type" className="sm:col-span-2 lg:col-span-3">
                 <Segmented block value={draft.type as ProjectType} onChange={(v) => !readOnly && setDraft({ ...draft, type: v, stream: draft.stream ?? null })} options={(Object.keys(PROJECT_TYPE) as ProjectType[]).map((k) => ({ value: k, label: PROJECT_TYPE[k] }))} />
               </Field>
-              <Field label="Commercial model" className="lg:col-span-3" hint={draft.billing_model === 'tm' ? 'Time & material: the price is the estimated billing.' : undefined}>
-                <Select value={draft.billing_model} disabled={readOnly} onChange={(ev) => set('billing_model', ev.target.value as BillingModel)} options={COMMERCIAL_MODELS.map((m) => ({ value: m.value, label: BILLING_MODEL[m.value] }))} />
+              <Field label="Commercial model" htmlFor="est-model" className="lg:col-span-3" hint={draft.billing_model === 'tm' ? 'Time & material: the price is the estimated billing.' : undefined}>
+                <Select id="est-model" value={draft.billing_model} disabled={readOnly} onChange={(ev) => set('billing_model', ev.target.value as BillingModel)} options={COMMERCIAL_MODELS.map((m) => ({ value: m.value, label: BILLING_MODEL[m.value] }))} />
               </Field>
-              <Field label="Revenue stream" className="lg:col-span-2" hint="Used when it becomes a project.">
-                <Select value={draft.stream ?? DEFAULT_STREAM[draft.type] ?? 'services'} disabled={readOnly} onChange={(ev) => set('stream', ev.target.value)} options={(Object.keys(STREAM) as RevenueStream[]).map((k) => ({ value: k, label: STREAM[k] }))} />
+              <Field label="Revenue stream" htmlFor="est-stream" className="lg:col-span-2" hint="Used when it becomes a project.">
+                <Select id="est-stream" value={draft.stream ?? DEFAULT_STREAM[draft.type] ?? 'services'} disabled={readOnly} onChange={(ev) => set('stream', ev.target.value)} options={(Object.keys(STREAM) as RevenueStream[]).map((k) => ({ value: k, label: STREAM[k] }))} />
               </Field>
-              <Field label="Start" required error={errors.start_on} className="lg:col-span-2">
-                <Input type="date" value={draft.start_on} disabled={readOnly} invalid={!!errors.start_on} onChange={(ev) => set('start_on', ev.target.value)} />
+              <Field label="Start" required error={errors.start_on} htmlFor="est-start" className="lg:col-span-2">
+                <Input id="est-start" type="date" value={draft.start_on} disabled={readOnly} invalid={!!errors.start_on} onChange={(ev) => set('start_on', ev.target.value)} />
               </Field>
-              <Field label="Planned end" required error={errors.end_on} className="lg:col-span-2">
-                <Input type="date" value={draft.end_on} min={draft.start_on} disabled={readOnly} invalid={!!errors.end_on} onChange={(ev) => set('end_on', ev.target.value)} />
+              <Field label="Planned end" required error={errors.end_on} htmlFor="est-end" className="lg:col-span-2">
+                <Input id="est-end" type="date" value={draft.end_on} min={draft.start_on} disabled={readOnly} invalid={!!errors.end_on} onChange={(ev) => set('end_on', ev.target.value)} />
               </Field>
               <CalendarLine className="sm:col-span-2 lg:col-span-6" preview={pv} manDays={t ? { total: t.man_days, rows: t.resource_rows } : null} />
-              <Field label="Scope" className="sm:col-span-2 lg:col-span-6" hint="Printed on the client quote.">
-                <Textarea rows={2} value={draft.description} disabled={readOnly} placeholder="Scope in a sentence or two." onChange={(ev) => set('description', ev.target.value)} />
+              <Field label="Scope" htmlFor="est-scope" className="sm:col-span-2 lg:col-span-6" hint="Printed on the client quote.">
+                <Textarea id="est-scope" rows={2} value={draft.description} disabled={readOnly} placeholder="Scope in a sentence or two." onChange={(ev) => set('description', ev.target.value)} />
               </Field>
             </div>
           </Card>
 
-          {/* ---------------- milestones ---------------- */}
+          {/* ---------------- 4. resources ---------------- */}
           <Card>
-            <CardHeader title="Milestones" subtitle="One per line in delivery order, with an optional billing amount after a “|”. Dates are spread across the estimate by billing share." />
-            <Field label="Milestones, one per line" error={errors.milestones}>
-              <Textarea
-                aria-label="Milestones, one per line"
-                rows={4}
-                value={draft.msText}
-                disabled={readOnly}
-                invalid={!!errors.milestones || parsed.errors.length > 0}
-                placeholder={'Requirements sign-off | 150000\nCore modules | 300000\nUAT sign-off | 200000'}
-                onChange={(ev) => set('msText', ev.target.value)}
-                className="tnum"
-              />
-            </Field>
-            {parsed.items.length > 0 && (
-              <ul className="mt-2 divide-y divide-line rounded-lg border border-line">
-                {parsed.items.map((it) => {
-                  const m = !it.error ? pv?.milestones.find((x) => x.code === it.code) : undefined
-                  return (
-                    <li key={it.line} className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-0.5 px-3 py-2 text-[13px]">
-                      <span className={cn('tnum w-8 shrink-0 font-semibold', it.error ? 'text-danger-text' : 'text-ink-3')}>{it.code || `L${it.line}`}</span>
-                      {it.error ? (
-                        <span className="min-w-0 flex-1 text-danger-text">{it.error}</span>
-                      ) : (
-                        <>
-                          <span className="min-w-0 flex-1 basis-[140px] truncate">{it.name}</span>
-                          {m && <span className="tnum whitespace-nowrap text-[12px] text-ink-3">{fmtDate(m.planned_start)} – {fmtDate(m.planned_end)}</span>}
-                          <span className="tnum whitespace-nowrap font-medium">{it.amount_paise ? fmtMoney(it.amount_paise) : <span className="font-normal text-ink-3">No billing</span>}</span>
-                        </>
-                      )}
-                    </li>
-                  )
-                })}
-                {pv && pv.billing_total > 0 && (
-                  <li className="flex flex-wrap items-baseline justify-between gap-x-3 bg-surface-2/60 px-3 py-2 text-[12.5px]">
-                    <span className="text-ink-3">
-                      {pv.milestones.length} milestone{pv.milestones.length === 1 ? '' : 's'}
-                      {pv.unscheduled_billing > 0 ? ` · ${fmtMoney(pv.unscheduled_billing)} of the price billed on completion` : ''}
-                    </span>
-                    <span className="tnum font-semibold">{fmtMoney(pv.billing_total)}</span>
-                  </li>
-                )}
-              </ul>
+            <CardHeader title="4. Resources allocated" />
+            <ResourceRows rows={draft.rows} onChange={(rows) => set('rows', rows)} preview={pv} errors={errors} readOnly={readOnly} canName={!!opts?.can_see_rates} />
+            {t?.people_share && t.people_share.length > 0 && <PeopleShare className="mt-4" people={t.people_share} resources={t.resources} loading={loading} />}
+          </Card>
+
+          {/* ---------------- 5. commercials ---------------- */}
+          <Card>
+            <CardHeader title="5. Commercials" subtitle="Resource cost + office & hardware + expenses + miscellaneous (+ maintenance) → contingency → actual cost → profit margin (50% of actual cost by default) → price." />
+            <CommercialsEditor draft={draft.costing} onChange={(c) => set('costing', c)} preview={pv} errors={errors} readOnly={readOnly} />
+            {t && t.total_cost !== null && (
+              <div className={cn('mt-5 transition-opacity', loading && 'opacity-70')}>
+                <CostChain t={t} contingencyPct={pv!.contingency_pct} markupPct={pv!.markup_pct} belowFloor={pv!.below_floor} />
+              </div>
             )}
           </Card>
 
-          {/* ---------------- resources ---------------- */}
-          <Card>
-            <CardHeader title="Resources by milestone" />
-            <ResourceRows rows={draft.rows} onChange={(rows) => set('rows', rows)} preview={pv} errors={errors} readOnly={readOnly} canName={!!opts?.can_see_rates} />
-          </Card>
-
-          {/* ---------------- costs & pricing (the Feature Guide calculator) ---------------- */}
-          <Card>
-            <CardHeader title="Costs and pricing" subtitle="Additional costs, maintenance / support, contingency, and markup ⇄ price — the same calculator as the create-project form." />
-            <CostingEditor draft={draft.costing} onChange={(c) => set('costing', c)} preview={pv} errors={errors} readOnly={readOnly} loading={loading} hideResources hideTotals />
-          </Card>
-
-          {/* ---------------- cost and cash by milestone ---------------- */}
+          {/* ---------------- 6. milestone-wise price breakdown ---------------- */}
           <Card>
             <CardHeader
-              title="Cost and cash by milestone"
-              subtitle="Billing against cost per milestone. Additional costs land on the first milestone, maintenance on the last, contingency in proportion to cost."
+              title="6. Milestone-wise price breakdown"
+              subtitle="How the price is billed. Dates are spread across the estimate by each milestone’s share."
               action={
+                <Segmented
+                  size="sm"
+                  value={draft.split}
+                  onChange={(v) => !readOnly && set('split', v)}
+                  options={[{ value: 'pct', label: '% of price' }, { value: 'amount', label: 'Amounts' }]}
+                />
+              }
+            />
+            {errors.milestones && <p className="mb-2 text-[12.5px] font-medium text-danger-text">{errors.milestones}</p>}
+            <ul className="space-y-2">
+              {draft.ms.map((m, i) => {
+                const pm = pv?.milestones[i]
+                return (
+                  <li key={m.key} className="grid grid-cols-[32px_minmax(0,1fr)_36px] items-center gap-2 rounded-lg border border-line p-2 sm:grid-cols-[32px_minmax(0,1fr)_150px_150px_36px]">
+                    <span className="tnum text-center text-[12.5px] font-semibold text-ink-3">M{i + 1}</span>
+                    <Input aria-label={`Milestone ${i + 1} name`} value={m.name} disabled={readOnly} placeholder="e.g. UAT sign-off" onChange={(ev) => set('ms', draft.ms.map((x) => (x.key === m.key ? { ...x, name: ev.target.value } : x)))} />
+                    <IconButton label={`Remove milestone ${i + 1}`} size="sm" className="sm:order-last" disabled={readOnly} onClick={() => setDraft({ ...draft, ms: draft.ms.filter((x) => x.key !== m.key), rows: draft.rows.map((r) => (r.ms === String(i) ? { ...r, ms: '', from_on: null, to_on: null } : r.ms !== '' && Number(r.ms) > i ? { ...r, ms: String(Number(r.ms) - 1) } : r)) })}>
+                      <Trash2 className="size-4" />
+                    </IconButton>
+                    <div className="col-span-2 col-start-2 grid grid-cols-2 gap-2 sm:col-span-2 sm:col-start-auto">
+                      {draft.split === 'pct' ? (
+                        <Input aria-label={`Milestone ${i + 1} share of price`} type="number" inputMode="decimal" min={0} max={100} step={5} suffix="%" value={m.pct} disabled={readOnly} onChange={(ev) => set('ms', draft.ms.map((x) => (x.key === m.key ? { ...x, pct: ev.target.value } : x)))} />
+                      ) : (
+                        <MoneyInput aria-label={`Milestone ${i + 1} billing`} value={m.amount_paise} disabled={readOnly} onChange={(v) => set('ms', draft.ms.map((x) => (x.key === m.key ? { ...x, amount_paise: v } : x)))} />
+                      )}
+                      <span className="tnum self-center text-right text-[13px] font-medium">{pm ? fmtMoney(pm.billing_amount_paise) : '—'}</span>
+                    </div>
+                    {pm && <span className="tnum col-span-2 col-start-2 text-[12px] text-ink-3 sm:col-span-4">{fmtDate(pm.planned_start)} – {fmtDate(pm.planned_end)}</span>}
+                  </li>
+                )
+              })}
+            </ul>
+            {!readOnly && (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <Button size="sm" icon={<Plus className="size-4" />} onClick={() => set('ms', [...draft.ms, { key: newKey('m'), name: '', amount_paise: 0, pct: draft.split === 'pct' && draft.ms.length === 0 ? '100' : '' }])}>
+                  Add milestone
+                </Button>
+                {draft.split === 'pct' && draft.ms.length > 0 && (
+                  <span className={cn('tnum text-[12.5px]', Math.abs(draft.ms.reduce((s2, m) => s2 + (Number(m.pct) || 0), 0) - 100) > 0.001 ? 'text-warning-text' : 'text-ink-3')}>
+                    Shares add up to {fmtNum(draft.ms.reduce((s2, m) => s2 + (Number(m.pct) || 0), 0), 2)}%
+                  </span>
+                )}
+              </div>
+            )}
+            {!readOnly && (
+              <div className="mt-3 rounded-lg border border-line">
+                <button type="button" aria-expanded={pasteOpen} onClick={() => setPasteOpen(!pasteOpen)} className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-[13px] font-medium">
+                  Quick add: paste “name | amount” lines
+                  <ChevronDown className={cn('size-4 shrink-0 text-ink-3 transition-transform', pasteOpen && 'rotate-180')} />
+                </button>
+                {pasteOpen && <div className="space-y-2 border-t border-line p-3">
+                  <Textarea aria-label="Milestones, one per line" rows={3} value={draft.msText} invalid={parsed.errors.length > 0} placeholder={'Requirements sign-off | 150000\nCore modules | 300000'} onChange={(ev) => set('msText', ev.target.value)} className="tnum" />
+                  {parsed.errors[0] && <p className="text-[12.5px] font-medium text-danger-text">{parsed.errors[0]}</p>}
+                  <Button size="sm" disabled={!parsed.items.some((x) => !x.error)} onClick={() => setDraft(addPasted(draft))}>Add milestones</Button>
+                </div>}
+              </div>
+            )}
+            <div className="mt-4 border-t border-line pt-4">
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <h4 className="text-[13.5px] font-semibold">Cost and cash by milestone</h4>
                 <Segmented
                   size="sm"
                   value={chart}
@@ -452,23 +492,24 @@ function Editor({
                     { value: 'chart', label: <span className="inline-flex items-center gap-1"><BarChart3 className="size-3.5" />Chart</span> },
                   ]}
                 />
-              }
-            />
-            {!pv || !pv.by_milestone.length ? (
-              <p className="text-[13px] text-ink-3">Add milestones to see cost and billing per milestone.</p>
-            ) : chart === 'chart' ? (
-              <>
-                <BarChart data={pv.by_milestone.map((m) => ({ ms: m.code, billing: m.billing, cost: m.total_cost }))} x="ms" format="money" series={[{ key: 'billing', label: 'Billing' }, { key: 'cost', label: 'Cost' }]} height={240} />
-                <ChartTableHidden pv={pv} />
-              </>
-            ) : (
-              <CashTable pv={pv} />
-            )}
+              </div>
+              {!pv || !pv.by_milestone.length ? (
+                <p className="text-[13px] text-ink-3">Add milestones to see the price and cost per milestone.</p>
+              ) : chart === 'chart' ? (
+                <>
+                  <BarChart data={pv.by_milestone.map((m) => ({ ms: m.code, billing: m.billing, cost: m.total_cost }))} x="ms" format="money" series={[{ key: 'billing', label: 'Billing' }, { key: 'cost', label: 'Cost' }]} height={240} />
+                  <ChartTableHidden pv={pv} />
+                </>
+              ) : (
+                <CashTable pv={pv} />
+              )}
+              <p className="mt-2 text-[12px] text-ink-3">Additional costs land on the first milestone, maintenance on the last, contingency in proportion to cost; All-milestone resources by the working days they overlap.</p>
+            </div>
           </Card>
 
           <Card>
             <CardHeader title="Internal notes" subtitle="Assumptions and risks. Not printed on the client quote." />
-            <Textarea rows={3} value={draft.notes} disabled={readOnly} placeholder="e.g. Flutter developer is an assumed hire at market CTC." onChange={(ev) => set('notes', ev.target.value)} />
+            <Textarea aria-label="Internal notes" rows={3} value={draft.notes} disabled={readOnly} placeholder="e.g. Flutter developer is an assumed hire at market CTC." onChange={(ev) => set('notes', ev.target.value)} />
           </Card>
         </div>
 
@@ -499,7 +540,6 @@ function Editor({
           </Button>
         </div>
       )}
-      {d && pv && converting && <ConvertDialog open={converting} onOpenChange={setConverting} d={d} pv={pv} />}
     </div>
   )
 }

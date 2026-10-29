@@ -3,10 +3,11 @@
 import { NavLink, Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import type { LucideIcon } from '@/ui/icons'
-import { Building2, Clock, IdCard, Landmark, Layers, ListTree, Mail, MapPin, Rocket, ShieldCheck, UserCog, Workflow } from '@/ui/icons'
+import { Building2, CalendarDays, Clock, IdCard, Landmark, Layers, ListTree, Mail, MapPin, Palmtree, Rocket, ShieldCheck, UserCog, Users, Wallet, Workflow } from '@/ui/icons'
 import type { Action } from '@/domain/permissions'
 import { ListGroup, ListRow, PageHeader, useCan } from '@/ui'
 import { cn } from '@/lib/utils'
+import { SETUP_HUB_ACTIONS } from '@/app/nav'
 
 export interface SetupItem {
   to: string
@@ -14,12 +15,14 @@ export interface SetupItem {
   icon: LucideIcon
   hint: string
   action: Action
+  /** v9: visible when the user holds any of these (instead of `action`) */
+  anyOf?: Action[]
   end?: boolean
 }
 export const SETUP_GROUPS: { title: string; items: SetupItem[] }[] = [
   {
     title: 'Get started',
-    items: [{ to: '/setup', label: 'Setup checklist', icon: Rocket, hint: 'Org data → roles → people', action: 'master.view', end: true }],
+    items: [{ to: '/setup', label: 'Admin setup', icon: Rocket, hint: 'Every setting and its status', action: 'master.view', anyOf: SETUP_HUB_ACTIONS, end: true }],
   },
   {
     title: 'Organisation',
@@ -31,6 +34,15 @@ export const SETUP_GROUPS: { title: string; items: SetupItem[] }[] = [
       { to: '/setup/grades', label: 'Grades & bands', icon: Layers, hint: 'Levels and CTC bands', action: 'master.view' },
       { to: '/setup/cost-centres', label: 'Cost centres', icon: Landmark, hint: 'Where cost is booked', action: 'master.view' },
       { to: '/setup/shifts', label: 'Shifts', icon: Clock, hint: 'Timings, grace, working days', action: 'master.view' },
+      { to: '/setup/teams', label: 'Teams', icon: Users, hint: 'Working groups, leads, members', action: 'master.view' },
+    ],
+  },
+  {
+    title: 'Policies & calendars',
+    items: [
+      { to: '/setup/leave-types', label: 'Leave types & policies', icon: Palmtree, hint: 'Quota, accrual, carry-forward, who it applies to', action: 'people.manage', anyOf: ['people.manage', 'people.view_all', 'master.view'] },
+      { to: '/setup/holidays', label: 'Holiday calendars', icon: CalendarDays, hint: 'Holidays per location, CSV import', action: 'holidays.edit', anyOf: ['holidays.edit', 'master.view'] },
+      { to: '/setup/opening-balances', label: 'Opening balances', icon: Wallet, hint: 'Cash, bank, receivables, payables', action: 'finance.view' },
     ],
   },
   {
@@ -48,7 +60,7 @@ export const SETUP_GROUPS: { title: string; items: SetupItem[] }[] = [
     ],
   },
 ]
-export const SETUP_ACTIONS: Action[] = ['master.view', 'roles.view', 'makerchecker.configure', 'workflows.manage', 'emails.view']
+export const SETUP_ACTIONS: Action[] = ['master.view', 'roles.view', 'makerchecker.configure', 'workflows.manage', 'emails.view', 'people.manage', 'holidays.edit', 'finance.view']
 
 function useIsDesktop() {
   const q = '(min-width: 1280px)'
@@ -79,11 +91,11 @@ export default function SetupLayout() {
   const loc = useLocation()
   const c = useCan()
   const desktop = useIsDesktop()
-  const groups = SETUP_GROUPS.map((g) => ({ ...g, items: g.items.filter((i) => c(i.action)) })).filter((g) => g.items.length)
+  const groups = SETUP_GROUPS.map((g) => ({ ...g, items: g.items.filter((i) => (i.anyOf ? i.anyOf.some((a) => c(a)) : c(i.action))) })).filter((g) => g.items.length)
   const listMode = !desktop && loc.pathname.replace(/\/$/, '') === '/setup' && new URLSearchParams(loc.search).get('list') === '1'
   const first = groups[0]?.items[0]
   if (!groups.length) return <Navigate to="/home" replace />
-  if (loc.pathname.replace(/\/$/, '') === '/setup' && !c('master.view') && first) return <Navigate to={first.to} replace />
+  if (loc.pathname.replace(/\/$/, '') === '/setup' && !SETUP_HUB_ACTIONS.some((a) => c(a)) && first) return <Navigate to={first.to} replace />
 
   if (listMode)
     return (

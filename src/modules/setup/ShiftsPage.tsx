@@ -286,7 +286,7 @@ function AssignSheet({ shift, shifts, onClose }: { shift: Shift; shifts: Shift[]
                   className={cn('flex min-h-[52px] items-center gap-3 px-3.5 py-2.5 outline-none focus-visible:bg-surface-2', here ? 'bg-surface-2/50' : 'cursor-pointer hover:bg-surface-2/60')}
                 >
                   <span onClick={(e) => e.stopPropagation()} className="flex">
-                    <Checkbox checked={on} disabled={here} onChange={(v) => setSel((s) => (v ? [...s, p.id] : s.filter((x) => x !== p.id)))} />
+                    <Checkbox aria-label={`Select ${p.name}`} checked={on} disabled={here} onChange={(v) => setSel((s) => (v ? [...s, p.id] : s.filter((x) => x !== p.id)))} />
                   </span>
                   <Avatar name={p.name} hue={p.avatar_hue} size={28} />
                   <span className="min-w-0 flex-1">

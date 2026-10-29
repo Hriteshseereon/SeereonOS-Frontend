@@ -17,7 +17,8 @@ import type { ExportTable } from '@/reports/export'
 import { addDays, fmtDate } from '@/domain/calendar'
 import { fmtMoney, fmtMoneyCompact, fmtNum } from '@/domain/money'
 import { cn } from '@/lib/utils'
-import { BILL_STATUS, GSTIN_RE, PAN_RE, PO_STATUS, VENDOR_STATUS } from './labels'
+import { BILL_STATUS, PAN_RE, PO_STATUS, VENDOR_STATUS } from './labels'
+import { gstinProblem } from '@/domain/gst'
 import { KpiRow, Meta, useFieldErrors } from './components'
 
 type Tab = 'pos' | 'bills' | 'vendors'
@@ -593,7 +594,8 @@ function VendorDialog({ row, checked, onClose }: { row: VendorRow | null; checke
     },
     onError: (e) => fe.take(e),
   })
-  const gstOk = !f.gstin || GSTIN_RE.test(f.gstin.toUpperCase())
+  const gstErr = f.gstin ? gstinProblem(f.gstin) : null
+  const gstOk = !gstErr
   const panOk = !f.pan || PAN_RE.test(f.pan.toUpperCase())
   const sensitiveChanged = !row || (['gstin', 'pan', 'bank_name', 'bank_account', 'ifsc'] as const).some((k) => String(f[k] ?? '') !== String(row[k] ?? ''))
   const pend = row?.pending_change ?? null
@@ -616,7 +618,7 @@ function VendorDialog({ row, checked, onClose }: { row: VendorRow | null; checke
         <Field label="Payment terms" error={fe.errors.payment_terms_days}>
           <Input type="number" min={0} max={180} suffix="days" value={String(f.payment_terms_days)} onChange={(e) => set('payment_terms_days', Number(e.target.value))} invalid={!!fe.errors.payment_terms_days} />
         </Field>
-        <Field label="GSTIN" error={fe.errors.gstin ?? (gstOk ? null : 'GSTIN is 15 characters, e.g. 21AAKFM9876Q1ZP.')} hint="Leave empty if the vendor is not GST-registered.">
+        <Field label="GSTIN" error={fe.errors.gstin ?? gstErr} hint="Leave empty if the vendor is not GST-registered.">
           <Input value={f.gstin} maxLength={15} onChange={(e) => { const g = e.target.value.toUpperCase(); set('gstin', g); if (g.length === 15 && !f.pan) set('pan', g.slice(2, 12)) }} className="tnum uppercase" invalid={!!fe.errors.gstin || !gstOk} />
         </Field>
         <Field label="PAN" error={fe.errors.pan ?? (panOk ? null : 'PAN is 10 characters, e.g. AAKFM9876Q.')}>

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Command } from 'cmdk'
-import { AlertTriangle, CalendarClock, Check, GitBranch, Maximize2, Plus, Trash2, X } from '@/ui/icons'
+import { AlertTriangle, CalendarClock, Check, GitBranch, Maximize2, Pencil, Plus, Trash2, X } from '@/ui/icons'
 import { useQueryClient } from '@tanstack/react-query'
 import { flushSync } from 'react-dom'
 import { tasksApi } from '@/api/tasks'
@@ -23,6 +23,7 @@ import {
 import { ApiError as ApiErr } from '@/api/http'
 import { TaskFormSheet, type TaskFormPrefill } from './TaskForm'
 import { TaskV7Panel } from './tasks/TaskV7Panel'
+import { MultiPicker } from './tasks/MultiPicker'
 import { MentionInput, RichText, mentionsIn } from './MentionInput'
 import { LateBadge, PRIORITY, RatingText, ReviewDialog, ReviewTimeline, SubmitReviewDialog, TimelinessBadge, delayLabel } from './taskReview'
 import { EstimateHintLine, FlagSlipDialog, ProgressDialog, StageBadge, StageSelect, TagBadge, useRemoveTask, type StageTask } from './taskStage'
@@ -194,6 +195,10 @@ function Loaded({ d, refetch, mode }: { d: Detail; refetch: () => void; mode: 'd
   const rv = d.review
   const [dlg, setDlg] = useState<null | 'submit' | 'approve' | 'send_back' | 'direct' | 'progress' | 'slip'>(null)
   const [follow, setFollow] = useState<null | TaskFormPrefill>(null)
+  const [editing, setEditing] = useState(false)
+  const me = useSession((s) => s.user)
+  const coIds = d.assignee_ids ?? []
+  const iAmCo = !!me && coIds.includes(me.id)
   const st: StageTask = {
     id: t.id, title: t.title, wbs: d.wbs, due_on: t.due_on, start_on: t.start_on, stage: d.stage, progress: d.progress, status: t.status, version: t.version,
     can_move: d.can_change_status, can_submit: rv.can_submit, can_review: t.status === 'in_review' ? rv.can_review : !rv.self_review && (rv.can_review || d.can_edit),
@@ -219,8 +224,13 @@ function Loaded({ d, refetch, mode }: { d: Detail; refetch: () => void; mode: 'd
   return (
     <div className="space-y-7 pb-2">
       {/* quick actions */}
-      {(d.can_log_time || mode === 'drawer' || d.can_create_followup || canDelete) && (
+      {(d.can_log_time || mode === 'drawer' || d.can_create_followup || canDelete || editable) && (
         <div className="-mt-1 flex flex-wrap items-center gap-2">
+          {editable && (
+            <Button size="sm" icon={<Pencil className="size-4" />} onClick={() => setEditing(true)}>
+              Edit task
+            </Button>
+          )}
           {d.can_log_time && !ro && (
             <Link to={logTo} onClick={() => useUI.getState().openTask(null)}>
               <Button size="sm" icon={<CalendarClock className="size-4" />}>
@@ -264,6 +274,7 @@ function Loaded({ d, refetch, mode }: { d: Detail; refetch: () => void; mode: 'd
           )}
         </div>
       )}
+      <TaskFormSheet open={editing} onOpenChange={setEditing} edit={d} />
       <TaskFormSheet
         open={!!follow}
         onOpenChange={(o) => !o && setFollow(null)}
@@ -278,9 +289,9 @@ function Loaded({ d, refetch, mode }: { d: Detail; refetch: () => void; mode: 'd
         </Callout>
       )}
 
-      {/* 1 — Owner & backup */}
+      {/* 1 — Owner, co-assignees & backup */}
       <section>
-        <SectionHead title="Owner and backup" hint="One owner is accountable. The backup covers the task when the owner is on leave." />
+        <SectionHead title="Owner, co-assignees and backup" hint="One owner is accountable and submits it for review. Co-assignees work on it too and log time. The backup covers the task when the owner is on leave." />
         <OwnerBackup d={d} editable={editable} refetch={refetch} />
         {leaveDays.length > 0 && open && (
           <p className="mt-2 text-[12.5px] text-warning-text">
@@ -336,7 +347,7 @@ function Loaded({ d, refetch, mode }: { d: Detail; refetch: () => void; mode: 'd
             {d.blockers.map((b) => `${b.wbs} ${b.title} — owner ${people.get(b.owner_id)?.name ?? 'unassigned'}`).join('; ')}. Talk to {d.blockers.length === 1 ? 'them' : 'the owners'} or ask the PM to change the dependency.
           </Callout>
         )}
-        {!canStatus && !ro && <p className="text-[12px] text-ink-3">Only the owner, backup or project manager can change the status.</p>}
+        {!canStatus && !ro && <p className="text-[12px] text-ink-3">Only the owner, co-assignees, backup or project manager can change the status.</p>}
         {waiting && t.blocked_reason && (
           <p className="text-[13px] text-warning-text">
             <span className="font-semibold">{TASK_STAGE[d.stage].label} since {fmtDate(d.stage_since)}:</span> {t.blocked_reason}
@@ -345,6 +356,11 @@ function Loaded({ d, refetch, mode }: { d: Detail; refetch: () => void; mode: 'd
         {t.slip_flagged_on && open && (
           <p className="text-[13px] text-warning-text">
             <span className="font-semibold">Slip flagged {fmtDate(t.slip_flagged_on)}:</span> {t.slip_note}
+          </p>
+        )}
+        {iAmCo && open && !rv.can_submit && (
+          <p className="text-[12.5px] text-ink-3">
+            You’re a co-assignee: log your time and comment on progress. {ownerName} owns the task and submits it for review.
           </p>
         )}
         <ReviewBar d={d} onAction={setDlg} />
@@ -404,21 +420,50 @@ function useSave(t: Detail['task'], refetch: () => void, after?: () => void) {
 
 function OwnerBackup({ d, editable, refetch }: { d: Detail; editable: boolean; refetch: () => void }) {
   const t = d.task
+  const people = usePeopleMap()
   const save = useSave(t, refetch)
+  const co = d.assignee_ids ?? []
+  const [coDraft, setCoDraft] = useState<string[]>(co)
+  useEffect(() => setCoDraft(d.assignee_ids ?? []), [d.assignee_ids])
   if (!editable)
     return (
       <div className="divide-y divide-line rounded-lg border border-line px-4">
         <Row label="Owner"><PersonName id={t.owner_id} size={22} /></Row>
+        <Row label="Co-assignees">
+          {co.length ? (
+            <div className="flex flex-col gap-1.5 py-0.5">
+              {co.map((x) => <PersonName key={x} id={x} size={22} />)}
+            </div>
+          ) : (
+            <span className="text-[13.5px] text-ink-3">None</span>
+          )}
+        </Row>
         <Row label="Backup">{t.backup_id ? <PersonName id={t.backup_id} size={22} /> : <span className="text-[13.5px] text-ink-3">No backup</span>}</Row>
       </div>
     )
+  const coOpts = (people.data ?? [])
+    .filter((p) => p.status === 'active' && p.id !== t.owner_id && p.id !== t.backup_id)
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((p) => ({ value: p.id, label: p.name, hint: p.title, chip: p.name, leading: <Avatar name={p.name} hue={p.avatar_hue} size={22} /> }))
+  const coDirty = coDraft.length !== co.length || coDraft.some((x, i) => x !== co[i])
   return (
     <div className="grid gap-3 sm:grid-cols-2">
       <Field label="Owner (accountable)">
         <PeoplePicker value={t.owner_id} onChange={(v) => v !== t.owner_id && save.mutate({ owner_id: v })} placeholder="Unassigned" />
       </Field>
       <Field label="Backup" hint="Optional. Covers the task on the owner’s leave days.">
-        <PeoplePicker value={t.backup_id} onChange={(v) => v !== t.backup_id && save.mutate({ backup_id: v })} filter={(p) => p.id !== t.owner_id} placeholder="No backup" clearable />
+        <PeoplePicker value={t.backup_id} onChange={(v) => v !== t.backup_id && save.mutate({ backup_id: v })} filter={(p) => p.id !== t.owner_id && !co.includes(p.id)} placeholder="No backup" clearable />
+      </Field>
+      <Field label="Co-assignees" className="sm:col-span-2" hint="They see the task in My tasks, are notified, log time and comment. The owner submits it for review.">
+        <div className="space-y-2">
+          <MultiPicker value={coDraft} onChange={setCoDraft} options={coOpts} placeholder="Add people" searchPlaceholder="Search people" max={10} />
+          {coDirty && (
+            <div className="flex justify-end gap-2">
+              <Button size="sm" variant="ghost" onClick={() => setCoDraft(co)}>Cancel</Button>
+              <Button size="sm" variant="primary" loading={save.isPending} onClick={() => save.mutate({ assignee_ids: coDraft })}>Save co-assignees</Button>
+            </div>
+          )}
+        </div>
       </Field>
     </div>
   )

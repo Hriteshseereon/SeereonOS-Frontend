@@ -1,6 +1,8 @@
-// /team-tasks — line managers assign work, review what their team submits, and track on-time delivery.
+// Team tasks — line managers assign work, review what their team submits, and track on-time delivery.
+// v9 (CEO request 9): no longer a sidebar page; it is the "Team tasks" tab of All tasks (/tasks?view=team&tab=…),
+// still gated by tasks.assign_team. The old /team-tasks URL redirects there (keeping ?tab=).
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, Navigate, useSearchParams } from 'react-router-dom'
 import { CheckCircle2, CornerDownLeft, ExternalLink, Inbox, Plus, Users } from '@/ui/icons'
 import { useApi, useMut } from '@/api/query'
 import type { ApiError } from '@/api/http'
@@ -16,8 +18,8 @@ import { addDays, fmtDate, parseISO, periodRange, relTime, todayISO } from '@/do
 import { fmtNum, fmtPct } from '@/domain/money'
 import { cn } from '@/lib/utils'
 import {
-  Avatar, Badge, Button, Callout, Card, CardHeader, DataTable, EmptyState, ErrorState, Field, FilterChips, Input, PageHeader, PeoplePicker, PeriodSwitch, PersonName,
-  Segmented, Select, SkeletonRows, StatCard, StatusBadge, Tabs, Textarea, useCan, usePeriod, useReadOnly, type Column,
+  Avatar, Badge, Button, Callout, Card, CardHeader, DataTable, EmptyState, ErrorState, Field, FilterChips, Input, PeoplePicker, PeriodSwitch, PersonName,
+  Segmented, Select, SkeletonRows, StatCard, StatusBadge, Textarea, useCan, usePeriod, useReadOnly, type Column,
 } from '@/ui'
 import { ApproveForm, LateBadge, PRIORITY, RatingText, ReviewDialog, SendBackForm, TimelinessBadge, delayLabel } from './taskReview'
 import { TimelinessSplit, fmtSlip, pctTone, slipTone } from './taskDelivery'
@@ -38,12 +40,21 @@ function addWorkingDaysSimple(from: string, n: number) {
 type Tab = 'review' | 'assign' | 'team' | 'performance'
 const TABS: Tab[] = ['review', 'assign', 'team', 'performance']
 
-export default function TeamTasksPage() {
+/** /team-tasks (old links, notifications, bookmarks) → the Team tasks tab of All tasks. */
+export default function TeamTasksRedirect() {
+  const [sp] = useSearchParams()
+  const raw = sp.get('tab') as Tab | null
+  return <Navigate to={`/tasks?view=team${raw && TABS.includes(raw) ? `&tab=${raw}` : ''}`} replace />
+}
+
+/** The Team tasks tab of All tasks: review queue, assign, the team's task list and delivery performance. */
+export function TeamTasksPanel() {
   const [sp, setSp] = useSearchParams()
   const raw = sp.get('tab') as Tab | null
   const tab: Tab = raw && TABS.includes(raw) ? raw : 'review'
   const setTab = (t: Tab) => setSp((p) => {
     const n = new URLSearchParams(p)
+    n.set('view', 'team')
     n.set('tab', t)
     return n
   }, { replace: true })
@@ -59,27 +70,26 @@ export default function TeamTasksPage() {
 
   return (
     <div>
-      <PageHeader
-        title="Team tasks"
-        subtitle="Assign work to your team, review what they submit and track delivery against due dates."
-        actions={
-          tab !== 'assign' && !ro ? (
-            <Button variant={tab === 'review' ? 'secondary' : 'primary'} icon={<Plus className="size-4" />} onClick={() => setTab('assign')}>
-              Assign task
-            </Button>
-          ) : undefined
-        }
-      />
-      <Tabs
-        value={tab}
-        onChange={setTab}
-        tabs={[
-          { value: 'review', label: 'Review queue', count: queue.data?.length },
-          { value: 'assign', label: 'Assign' },
-          { value: 'team', label: 'Team tasks', count: overdue || undefined },
-          { value: 'performance', label: 'Performance' },
-        ]}
-      />
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <FilterChips
+            value={tab}
+            onChange={(v) => v && setTab(v)}
+            options={[
+              { value: 'review', label: 'Review queue', count: queue.data?.length },
+              { value: 'assign', label: 'Assign' },
+              { value: 'team', label: 'Team list', count: overdue || undefined },
+              { value: 'performance', label: 'Performance' },
+            ]}
+          />
+          <p className="mt-2 text-[12.5px] text-ink-3">Assign work to your team, review what they submit and track delivery against due dates.</p>
+        </div>
+        {tab !== 'assign' && !ro && (
+          <Button size="sm" variant={tab === 'review' ? 'secondary' : 'primary'} icon={<Plus className="size-4" />} onClick={() => setTab('assign')} className="shrink-0">
+            Assign task
+          </Button>
+        )}
+      </div>
       {tab === 'review' && <ReviewQueue q={queue} wide={wide} all={all} setAll={setAll} />}
       {tab === 'assign' && <AssignTab onAssigned={() => setTab('team')} />}
       {tab === 'team' && <TeamList q={team} />}
@@ -295,10 +305,10 @@ function TeamList({ q }: { q: { data?: TeamTaskRow[]; isLoading: boolean; error:
   const [status, setStatus] = useState<StatusFilter>('open')
   const [tl, setTl] = useState('')
   const rows = q.data ?? []
-  const owners = useMemo(() => [...new Set(rows.map((r) => r.owner_id).filter(Boolean) as string[])].map((id) => ({ value: id, label: people.get(id)?.name ?? '—' })).sort((a, b) => a.label.localeCompare(b.label)), [rows, people])
+  const owners = useMemo(() => [...new Set(rows.flatMap((r) => [r.owner_id, ...((r as V5Row).assignee_ids ?? [])]).filter(Boolean) as string[])].map((id) => ({ value: id, label: people.get(id)?.name ?? '—' })).sort((a, b) => a.label.localeCompare(b.label)), [rows, people])
   const byStatus = (r: TeamTaskRow, s: StatusFilter) =>
     s === 'all' ? true : s === 'open' ? r.status !== 'done' : s === 'overdue' ? r.overdue_days > 0 : r.status === s
-  const base = rows.filter((r) => (!person || r.owner_id === person) && (!tl || r.timeliness === tl))
+  const base = rows.filter((r) => (!person || r.owner_id === person || ((r as V5Row).assignee_ids ?? []).includes(person)) && (!tl || r.timeliness === tl))
   const list = base
     .filter((r) => byStatus(r, status))
     .sort((a, b) => b.overdue_days - a.overdue_days || (a.status === 'done' ? 1 : 0) - (b.status === 'done' ? 1 : 0) || a.due_on.localeCompare(b.due_on))
@@ -312,7 +322,18 @@ function TeamList({ q }: { q: { data?: TeamTaskRow[]; isLoading: boolean; error:
         </div>
       ),
     },
-    { key: 'owner', header: 'Owner', sortValue: (r) => people.get(r.owner_id)?.name ?? '', cell: (r) => <PersonName id={r.owner_id} size={22} /> },
+    {
+      key: 'owner', header: 'Owner', sortValue: (r) => people.get(r.owner_id)?.name ?? '',
+      cell: (r) => {
+        const co = (r as V5Row).assignee_ids ?? []
+        return (
+          <div className="min-w-0">
+            <PersonName id={r.owner_id} size={22} />
+            {co.length > 0 && <div className="mt-0.5 truncate text-[12px] text-ink-3" title={co.map((x) => people.get(x)?.name ?? '').join(', ')}>with {co.map((x) => people.get(x)?.name.split(' ')[0] ?? '—').join(', ')}</div>}
+          </div>
+        )
+      },
+    },
     { key: 'status', header: 'Stage', sortValue: (r) => STAGE_RANK[(r as V5Row).stage] ?? 0, cell: (r) => <div className="w-[200px]" onClick={(e) => e.stopPropagation()}><StageSelect size="sm" t={stageTask(r)} /></div> },
     { key: 'progress', header: 'Done', align: 'right', hideBelow: 'lg', sortValue: (r) => (r as V5Row).progress, cell: (r) => <span className="tnum whitespace-nowrap text-ink-2">{(r as V5Row).progress}%</span> },
     {
@@ -366,7 +387,7 @@ function TeamList({ q }: { q: { data?: TeamTaskRow[]; isLoading: boolean; error:
             <div className="mt-2" onClick={(e) => e.stopPropagation()}>
               <StageSelect size="sm" t={stageTask(r)} />
             </div>
-            <div className="mt-0.5 truncate text-[12.5px] text-ink-3">{people.get(r.owner_id)?.name ?? 'Unassigned'} · {r.general ? 'General & admin' : r.project_code}</div>
+            <div className="mt-0.5 truncate text-[12.5px] text-ink-3">{people.get(r.owner_id)?.name ?? 'Unassigned'}{(r as V5Row).assignee_ids?.length ? ` +${(r as V5Row).assignee_ids!.length}` : ''} · {r.general ? 'General & admin' : r.project_code}</div>
             <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px] text-ink-3">
               <span className={cn('tnum whitespace-nowrap', r.overdue_days && 'text-danger-text')}>Due {fmtDate(r.due_on)}{r.overdue_days ? ` · ${r.overdue_days}d overdue` : ''}</span>
               {r.status === 'done' && <TimelinessBadge timeliness={r.timeliness} variance={r.variance_days} />}

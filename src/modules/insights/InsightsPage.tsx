@@ -1,10 +1,12 @@
-// UI-36 /insights and /insights/:view — ten role-scoped views as tabs: the 8 spec views plus
-// delivery predictions (P50/P80 Monte-Carlo) and estimation accuracy. Each view: explanation, KPIs,
-// table (cards on phones), Export and "Ask AI about this".
-import { useMemo } from 'react'
+// UI-36 /insights and /insights/:view — role-scoped views, each answering ONE question (v9, CEO request 13): the
+// question, the chart that answers it (Gantt, milestone timeline, utilisation heatmap, trends, margin bars, funnel …)
+// with the finding as its title, the KPIs, then the detail table (cards on phones), Export and "Ask AI about this".
+// Delivery predictions stay the landing view (Feature Guide §15: Insights looks ahead first).
+import { useRef } from 'react'
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
-import { BarChart3, Sparkles } from '@/ui/icons'
-import { useInsight, useInsightTabs, type InsightCell, type InsightColumn, type InsightResult, type InsightViewId } from '@/api/dashboards'
+import { BarChart3 } from '@/ui/icons'
+import type { InsightCell, InsightColumn } from '@/api/dashboards'
+import { useInsightCatalogue, useInsightView, type InsightViewResult } from '@/api/insightViews'
 import { useUI } from '@/stores/ui'
 import { Avatar, Badge, Button, Card, DataTable, EmptyState, ErrorState, PageHeader, SkeletonCards, SkeletonRows, Tooltip, useCan, type Column } from '@/ui'
 import { ExportMenu } from '@/reports/ExportMenu'
@@ -14,12 +16,9 @@ import { fmtMoney, fmtNum, fmtPct } from '@/domain/money'
 import { WEEK_STATUS, type Tone } from '@/domain/labels'
 import { cn } from '@/lib/utils'
 import { Kpi } from './kit'
+import { VizCard } from './viz/VizCard'
 
 type Row = Record<string, InsightCell>
-
-const GROUP_LABEL = { prediction: 'Looking ahead', delivery: 'Delivery', people: 'People', sales: 'Sales' } as const
-/** Feature Guide §15: Insights looks ahead first — it opens on Delivery predictions, then Estimation accuracy. */
-const GROUP_ORDER = ['prediction', 'delivery', 'people', 'sales'] as const
 
 function chanceTone(v: number): Tone {
   return v >= 0.8 ? 'success' : v >= 0.5 ? 'warning' : 'danger'
@@ -95,8 +94,8 @@ function Cell({ col, row }: { col: InsightColumn; row: Row }) {
       return (
         <span className="inline-flex gap-1">
           {ws.map((w, i) => (
-            <Tooltip key={i} content={w === 'missing' ? 'Not started' : WEEK_STATUS[w as keyof typeof WEEK_STATUS]?.label ?? w}>
-              <span className={cn('h-5 w-3 rounded-[3px]', w === 'approved' ? 'bg-success' : w === 'submitted' ? 'bg-warning' : w === 'open' ? 'bg-info/60' : 'bg-danger')} />
+            <Tooltip key={i} content={w === 'missing' ? 'Not started' : w === 'not_joined' ? 'Before joining — not due' : WEEK_STATUS[w as keyof typeof WEEK_STATUS]?.label ?? w}>
+              <span className={cn('h-5 w-3 rounded-[3px]', w === 'approved' ? 'bg-success' : w === 'submitted' ? 'bg-warning' : w === 'open' ? 'bg-info/60' : w === 'not_joined' ? 'bg-line' : 'bg-danger')} />
             </Tooltip>
           ))}
         </span>
@@ -122,14 +121,15 @@ function CellSub({ col, row }: { col: InsightColumn; row: Row }) {
 function exportType(t: InsightColumn['type']): ExportColType {
   return t === 'money' ? 'money' : t === 'percent' || t === 'chance' ? 'percent' : t === 'hours' ? 'hours' : t === 'date' ? 'date' : t === 'number' || t === 'days' || t === 'ratio' ? 'number' : 'string'
 }
-function toExport(d: InsightResult, cols: InsightColumn[], rows: Row[], title: string, weeks?: string[]): ExportTable {
+function toExport(d: InsightViewResult, cols: InsightColumn[], rows: Row[], title: string, weeks?: string[]): ExportTable {
   return {
     title,
     subtitle: `Insights · ${new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}`,
     columns: cols.map((c) => ({ key: c.key, label: c.label, type: exportType(c.type) })),
     rows: rows.map((r) => Object.fromEntries(cols.map((c) => [c.key, Array.isArray(r[c.key]) ? (r[c.key] as string[]).map((w, i) => `${weeks?.[i] ? weekLabel(weeks[i]).split(' – ')[0] : ''}: ${w}`).join('; ') : (r[c.key] as string | number | null)]))),
     kpis: d.kpis.map((k) => ({ label: k.label, value: k.value === null ? '—' : k.format === 'money' ? fmtMoney(k.value) : k.format === 'percent' ? fmtPct(k.value, 0) : k.format === 'ratio' ? `×${k.value.toFixed(2)}` : k.format === 'hours' ? `${fmtNum(k.value, 1)}h` : k.format === 'days' ? `${k.value}d` : fmtNum(k.value) })),
-    notes: [d.explanation],
+    notes: [d.finding, d.explanation].filter(Boolean),
+    category: 'Insights',
   }
 }
 
@@ -175,44 +175,58 @@ function InsightTable({ cols, rows, empty }: { cols: InsightColumn[]; rows: Row[
   )
 }
 
-function InsightView({ view }: { view: InsightViewId }) {
-  const q = useInsight(view)
+function fmtKpi(k: InsightViewResult['kpis'][number]) {
+  return k.value === null ? '—' : k.format === 'money' ? fmtMoney(k.value) : k.format === 'percent' ? fmtPct(k.value, 0) : k.format === 'ratio' ? `×${k.value.toFixed(2)}` : k.format === 'hours' ? `${fmtNum(k.value, 1)}h` : k.format === 'days' ? `${k.value}d` : fmtNum(k.value)
+}
+
+function InsightView({ view }: { view: string }) {
+  const q = useInsightView(view)
   const openAI = useUI((s) => s.openAI)
   const c = useCan()
+  const chartRef = useRef<HTMLDivElement>(null)
   const d = q.data
   if (q.isLoading)
     return (
       <div className="space-y-4">
-        <SkeletonCards n={3} />
+        <SkeletonCards n={4} />
         <SkeletonRows rows={6} />
       </div>
     )
   if (q.error || !d) return <ErrorState error={q.error} onRetry={() => q.refetch()} />
+  const stale = q.isFetching && d.view !== view
   return (
-    <div className="space-y-4">
+    <div className={cn('space-y-4 transition-opacity', stale && 'opacity-60')}>
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-        <p className="max-w-[80ch] text-[13.5px] leading-relaxed text-ink-2">{d.explanation}</p>
+        <div className="min-w-0">
+          <h2 className="text-[16px] font-semibold text-ink">{d.label}</h2>
+          <p className="mt-0.5 text-[13.5px] text-ink-2">{d.question}</p>
+        </div>
         <div className="flex shrink-0 items-center gap-2">
           {c('ai.use') && (
             <Button size="sm" onClick={() => openAI(d.ask, `insight:${view}`)}>
               Ask AI about this
             </Button>
           )}
-          <ExportMenu table={() => toExport(d, d.columns, d.rows as Row[], d.title, d.weeks)} filename={`insight-${view}`} />
+          <ExportMenu
+            table={() => ({ ...toExport(d, d.columns, d.rows as Row[], d.title, d.weeks), chartSvg: chartRef.current?.querySelector('svg.recharts-surface') as SVGSVGElement | null, chartTitle: d.charts[0]?.title })}
+            filename={`insight-${view}`}
+          />
         </div>
       </div>
       <div className={cn('grid grid-cols-2 gap-2.5 md:gap-3', d.kpis.length >= 4 ? 'lg:grid-cols-4' : 'lg:grid-cols-3')}>
         {d.kpis.map((k) => (
-          <Kpi
-            key={k.label}
-            label={k.label}
-            hint={k.hint}
-            tone={k.tone}
-            value={k.value === null ? '—' : k.format === 'money' ? fmtMoney(k.value) : k.format === 'percent' ? fmtPct(k.value, 0) : k.format === 'ratio' ? `×${k.value.toFixed(2)}` : k.format === 'hours' ? `${fmtNum(k.value, 1)}h` : k.format === 'days' ? `${k.value}d` : fmtNum(k.value)}
-          />
+          <Kpi key={k.label} label={k.label} hint={k.hint} tone={k.tone} value={fmtKpi(k)} />
         ))}
       </div>
-      {d.main_title && <h2 className="pt-2 text-[14px] font-semibold">{d.main_title}</h2>}
+      {d.charts.length > 0 && (
+        <div className={cn('grid min-w-0 gap-4', d.charts.length > 1 && 'xl:grid-cols-2')}>
+          {d.charts.map((v, i) => (
+            <VizCard key={v.id ?? i} viz={v} fetching={q.isFetching} chartRef={i === 0 ? chartRef : undefined} />
+          ))}
+        </div>
+      )}
+      <p className="max-w-[90ch] text-[12.5px] leading-relaxed text-ink-3">{d.explanation}</p>
+      <h2 className="pt-1 text-[14px] font-semibold">{d.main_title ?? 'Detail'}</h2>
       <InsightTable cols={d.columns} rows={d.rows as Row[]} empty={d.empty} />
       {d.sections?.map((s) => (
         <section key={s.title} className="pt-2">
@@ -232,44 +246,43 @@ function InsightView({ view }: { view: InsightViewId }) {
 
 export default function InsightsPage() {
   const { view } = useParams<{ view?: string }>()
-  const tabs = useInsightTabs()
+  const cat = useInsightCatalogue()
   const nav = useNavigate()
-  const list = useMemo(() => [...(tabs.data ?? [])].sort((a, b) => GROUP_ORDER.indexOf(a.group) - GROUP_ORDER.indexOf(b.group)), [tabs.data])
-  if (tabs.isLoading)
+  if (cat.isLoading)
     return (
       <div>
         <PageHeader title="Insights" />
         <SkeletonRows rows={6} />
       </div>
     )
-  if (tabs.error) return <ErrorState error={tabs.error} onRetry={() => tabs.refetch()} />
+  if (cat.error || !cat.data) return <ErrorState error={cat.error} onRetry={() => cat.refetch()} />
+  const list = cat.data.views
   if (!list.length)
     return (
       <div>
         <PageHeader title="Insights" />
         <Card>
-          <EmptyState icon={<BarChart3 />} title="No insights for your role" body="Insights cover delivery, people and sales. Your dashboard has everything for your own work." />
+          <EmptyState icon={<BarChart3 />} title="No insights for your role" body="Insights cover delivery, people, finance and sales. Your dashboard has everything for your own work." />
         </Card>
       </div>
     )
   const current = list.find((t) => t.id === view)?.id
-  if (!current) return <Navigate to={`/insights/${(list.find((t) => t.id === 'predictions') ?? list[0]).id}`} replace />
-  const groups = GROUP_ORDER.map((g) => ({ g, items: list.filter((t) => t.group === g) })).filter((x) => x.items.length)
-  const cur = list.find((t) => t.id === current)!
+  if (!current) return <Navigate to={`/insights/${cat.data.default ?? list[0].id}`} replace />
+  const groups = cat.data.groups.map((g) => ({ g, items: list.filter((t) => t.group === g.id) })).filter((x) => x.items.length)
   return (
     <div>
-      <PageHeader title="Insights" subtitle="Predictions and exceptions built from your own history. Everything here is computed live from tasks, hours, allocations and deals." />
-      <div className="lg:grid lg:grid-cols-[232px_minmax(0,1fr)] lg:gap-6">
+      <PageHeader title="Insights" subtitle="Each view answers one question with the chart that shows it — computed live from tasks, hours, allocations, invoices and deals." />
+      <div className="lg:grid lg:grid-cols-[240px_minmax(0,1fr)] lg:gap-6">
         {/* desktop: grouped side nav */}
         <nav className="hidden lg:block" aria-label="Insight views">
           <div className="sticky top-24 space-y-4">
             {groups.map(({ g, items }) => (
-              <div key={g}>
-                <div className="mb-1 px-2.5 text-[12px] font-medium text-ink-3">{GROUP_LABEL[g]}</div>
+              <div key={g.id}>
+                <div className="mb-1 px-2.5 text-[12px] font-medium text-ink-3">{g.label}</div>
                 <ul className="space-y-0.5">
                   {items.map((t) => (
                     <li key={t.id}>
-                      <Link to={`/insights/${t.id}`} className={cn('flex h-9 items-center justify-between gap-2 rounded-md px-2.5 text-[13.5px] font-medium transition', t.id === current ? 'bg-brand-soft text-brand-text' : 'text-ink-2 hover:bg-surface-2 hover:text-ink')}>
+                      <Link to={`/insights/${t.id}`} title={t.question} className={cn('flex h-9 items-center justify-between gap-2 rounded-md px-2.5 text-[13.5px] font-medium transition', t.id === current ? 'bg-brand-soft text-brand-text' : 'text-ink-2 hover:bg-surface-2 hover:text-ink')}>
                         <span className="truncate">{t.label}</span>
                         {t.count !== null && <span className={cn('tnum shrink-0 text-[12px]', t.count ? 'text-ink-2' : 'text-ink-3')}>{t.count}</span>}
                       </Link>
@@ -290,7 +303,6 @@ export default function InsightsPage() {
           ))}
         </div>
         <div className="min-w-0">
-          <h2 className="mb-2 hidden text-[16px] font-semibold lg:block">{cur.label}</h2>
           <InsightView key={current} view={current} />
         </div>
       </div>

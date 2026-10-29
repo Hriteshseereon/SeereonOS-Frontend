@@ -72,7 +72,7 @@ export function TaskDeliveryPanel({ variant, className }: { variant: 'ceo' | 'pm
   const d = q.data
   const title = variant === 'employee' ? 'My delivery' : 'Task delivery'
   const subtitle = variant === 'ceo' || variant === 'hr' ? 'Company · last 90 days · completion vs due date' : variant === 'pm' ? 'My team · last 90 days' : 'Last 90 days · approved tasks vs due date'
-  const link = variant === 'employee' ? '/my-tasks' : '/team-tasks?tab=performance'
+  const link = variant === 'employee' ? '/my-tasks' : '/tasks?view=team&tab=performance'
   return (
     <Card className={cn('min-w-0', className)}>
       <CardHeader

@@ -6,7 +6,7 @@ import { fmtMoney } from '@/domain/money'
 import { ExportMenu } from '@/reports/ExportMenu'
 import { Card, CardHeader, ErrorState, PageHeader, Segmented, SkeletonRows, StatCard } from '@/ui'
 import { CostingTab } from '@/modules/projects/tabs/CostingTab'
-import { MarginKpis, MarginsTable, marginsExport, useMargins } from '@/modules/finance/MarginsPanel'
+import { MARGIN_SCOPE_LABEL, MarginKpis, MarginsTable, marginsExport, useMargins } from '@/modules/finance/MarginsPanel'
 import { ModeSwitch, ProjectPickerCard, ProjectsGate, useDeliveryProjects, useProjectChoice, useViewMode, WithProject } from './shared'
 
 export default function DeliveryCostingPage() {
@@ -44,9 +44,9 @@ function Portfolio() {
           value={scope}
           onChange={setScope}
           options={[
-            { value: 'active', label: 'Active' },
-            { value: 'open', label: 'All open' },
-            { value: 'all', label: 'Including closed' },
+            { value: 'active', label: MARGIN_SCOPE_LABEL.active },
+            { value: 'open', label: MARGIN_SCOPE_LABEL.open },
+            { value: 'all', label: MARGIN_SCOPE_LABEL.all },
           ]}
         />
         <ExportMenu table={d ? () => marginsExport(d) : null} filename={`costing-margins-${scope}`} />

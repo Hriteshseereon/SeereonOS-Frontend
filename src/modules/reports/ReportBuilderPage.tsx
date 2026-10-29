@@ -6,6 +6,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, ArrowRight, BarChart3, Check, Database, Info, Loader2, Save, Sparkles, Table2 } from '@/ui/icons'
 import type { Dimension, Filter, Measure, ReportSpec } from '@/types/reports'
 import { reportsApi, useDatasets, useSavedReport } from '@/api/reports'
+import { TypedSavedEdit } from './ReportTypePage'
 import { useApi } from '@/api/query'
 import { useUI } from '@/stores/ui'
 import { Button, Card, EmptyState, ErrorState, Field, Input, PageHeader, Segmented, SkeletonRows, useCan, useReadOnly, EmptyOrError } from '@/ui'
@@ -50,7 +51,7 @@ export default function ReportBuilderPage() {
     if (spec || !datasets.data) return
     const fromState = (loc.state as { spec?: ReportSpec } | null)?.spec
     if (id) {
-      if (existing.data) setSpec(existing.data.spec)
+      if (existing.data && !existing.data.report_type) setSpec(existing.data.spec)
     } else if (fromState) {
       const ds = datasets.data.find((d) => d.id === fromState.dataset)
       if (ds) setSpec(sanitizeSpec(fromState as never, ds).spec)
@@ -100,6 +101,7 @@ export default function ReportBuilderPage() {
   if (id && (existing.error || !existing.data)) return <ErrorState error={existing.error} onRetry={() => existing.refetch()} />
   if (id && existing.data && !existing.data.can_edit)
     return <ErrorState error={{ code: 'FORBIDDEN', message: 'Only the owner or an admin can edit this report. Duplicate it from the report page to make your own copy.' }} />
+  if (id && existing.data?.report_type) return <TypedSavedEdit report={existing.data} />
 
   const res = preview.data as ReportResultX | undefined
   const chartable = !!res && res.spec.chart !== 'table' && res.columns.some((x) => x.role === 'measure')

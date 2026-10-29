@@ -17,9 +17,10 @@ import { TeamTab } from './tabs/TeamTab'
 import { CostingTab } from './tabs/CostingTab'
 import { ChangesTab } from './tabs/ChangesTab'
 import { ActivityTab } from './tabs/ActivityTab'
+import { EscalationTab } from './tabs/EscalationTab'
 import ProjectDocumentsPanel from '@/modules/documents/ProjectDocumentsPanel'
 
-const TABS = ['overview', 'wbs', 'schedule', 'team', 'documents', 'costing', 'changes', 'activity'] as const
+const TABS = ['overview', 'wbs', 'schedule', 'team', 'documents', 'costing', 'changes', 'escalation', 'activity'] as const
 type TabKey = (typeof TABS)[number]
 const ALIAS: Record<string, TabKey> = { allocation: 'team', gantt: 'schedule', 'change-requests': 'changes', money: 'costing', margins: 'costing' }
 
@@ -55,6 +56,7 @@ export default function ProjectPage() {
           { to: `/projects/${id}/documents`, label: 'Documents' },
           { to: `/projects/${id}/costing`, label: 'Costing & margin', hidden: !showMoney },
           { to: `/projects/${id}/changes`, label: 'Changes', hidden: !showChanges },
+          { to: `/projects/${id}/escalation`, label: 'Escalation' },
           { to: `/projects/${id}/activity`, label: 'Activity' },
         ]}
       />
@@ -65,6 +67,7 @@ export default function ProjectPage() {
       {current === 'documents' && <ProjectDocumentsPanel projectId={d.project.id} />}
       {current === 'costing' && <CostingTab d={d} />}
       {current === 'changes' && <ChangesTab d={d} />}
+      {current === 'escalation' && <EscalationTab d={d} />}
       {current === 'activity' && <ActivityTab d={d} />}
     </div>
   )

@@ -1,16 +1,18 @@
 // G5.04 — change requests: KPIs, CR-n rows, raise / estimate, approve (adds value to the contract) / reject,
 // and "Add its tasks to the WBS" once approved. Nothing enters the plan without an approved change request.
 import { useEffect, useState } from 'react'
-import { Check, ClipboardList, ListTree, Pencil, Plus, Trash2, X } from '@/ui/icons'
+import { Check, CheckCheck, ClipboardList, ListTree, Pencil, Plus, Send, Trash2, X } from '@/ui/icons'
+import { crSendApi, type ChangeRequestV9 } from '@/api/projectWizard'
 import type { ChangeRequest } from '@/types/entities'
 import { crApi, type ChangeRequestInput, type CrProposedTask, type ProjectDetail } from '@/api/projects'
 import { useApi, useMut } from '@/api/query'
 import { ApiError } from '@/api/http'
 import { usePeopleMap } from '@/api/core'
 import { CR_STATUS } from '@/domain/labels'
-import { fmtDate, todayISO } from '@/domain/calendar'
+import { fmtDate, fmtDateTime, todayISO } from '@/domain/calendar'
 import { fmtMoney, fmtNum, fmtPct } from '@/domain/money'
 import { cn } from '@/lib/utils'
+import { useSession } from '@/stores/session'
 import { Button, Card, CardHeader, Checkbox, Dialog, EmptyState, ErrorState, Field, IconButton, Input, MoneyInput, PeoplePicker, Select, Skeleton, StatusBadge, Textarea, useConfirm, useReadOnly } from '@/ui'
 
 const INV = (pid: string) => [['project', pid], ['projects'], ['delivery'], ['tasks']]
@@ -24,6 +26,10 @@ export function ChangesTab({ d }: { d: ProjectDetail }) {
   const { askReason } = useConfirm()
   const reject = useMut((v: { cr: ChangeRequest; reason: string }) => crApi.reject(v.cr.id, v.reason), { invalidate: INV(d.project.id), success: (_r, v) => `CR-${v.cr.number} rejected` })
   const done = useMut((cr: ChangeRequest) => crApi.update(cr.id, { status: 'done' }, cr.version), { invalidate: INV(d.project.id), success: (_r, cr) => `CR-${cr.number} marked done` })
+  const [sending, setSending] = useState<ChangeRequestV9 | null>(null)
+  const people = usePeopleMap()
+  const myId = useMyId()
+  const seen = useMut((cr: ChangeRequestV9) => crSendApi.seen(cr.id), { invalidate: [...INV(d.project.id), ['change-requests']], success: (_r, cr) => `CR-${cr.number} acknowledged` })
   if (q.isLoading)
     return (
       <Card>
@@ -37,26 +43,29 @@ export function ChangesTab({ d }: { d: ProjectDetail }) {
         <ErrorState error={q.error} onRetry={() => q.refetch()} />
       </Card>
     )
-  const c = q.data
+  const c = q.data as typeof q.data & { recipient_view?: boolean }
   const editable = c.can_manage && !readOnly
   return (
     <Card>
       <CardHeader
         title="Change requests"
-        subtitle="Anything the client adds after signing. Approving adds its value to the contract; its tasks enter the WBS only after approval."
+        subtitle={c.recipient_view ? 'Change requests the project manager sent you. Read them and acknowledge; the decision stays with the project manager.' : 'Anything the client adds after signing. Approving adds its value to the contract; its tasks enter the WBS only after approval. Send a request to the team so they can review the effort.'}
         action={editable ? <Button size="sm" variant="primary" icon={<Plus className="size-4" />} onClick={() => setEdit({ open: true, cr: null })}>Raise a change request</Button> : undefined}
       />
-      <div className="mb-4 grid grid-cols-2 gap-x-4 gap-y-3 md:grid-cols-4">
+      {!c.recipient_view && <div className="mb-4 grid grid-cols-2 gap-x-4 gap-y-3 md:grid-cols-4">
         <Kpi label="Raised" value={String(c.raised)} />
         <Kpi label="Awaiting decision" value={String(c.awaiting)} tone={c.awaiting ? 'warning' : undefined} />
         <Kpi label="Approved extra effort" value={`${fmtNum(c.approved_hours, 0)}h`} sub={c.approved_value ? `${fmtMoney(c.approved_value)} added` : undefined} />
         <Kpi label="Scope growth vs baseline" value={c.scope_growth === null ? '—' : fmtPct(c.scope_growth, 0)} sub={`of ${fmtNum(c.baseline_hours, 0)}h baseline`} tone={c.scope_growth !== null && c.scope_growth > 0.05 ? 'warning' : undefined} />
-      </div>
+      </div>}
       {!c.items.length ? (
         <EmptyState compact icon={<ClipboardList />} title="No change requests" body="When the client asks for more, raise it here so hours, schedule impact and value are agreed before work starts." action={editable ? <Button size="sm" variant="primary" onClick={() => setEdit({ open: true, cr: null })}>Raise a change request</Button> : undefined} />
       ) : (
         <ul className="divide-y divide-line border-t border-line">
-          {c.items.map((cr) => {
+          {c.items.map((cr0) => {
+            const cr = cr0 as ChangeRequest
+            const v9 = cr0 as unknown as ChangeRequestV9
+            const mine = (v9.sent_to ?? []).find((x) => x.user_id === myId)
             const open = cr.status === 'raised' || cr.status === 'estimated'
             const approved = cr.status === 'approved' || cr.status === 'done'
             return (
@@ -68,7 +77,7 @@ export function ChangesTab({ d }: { d: ProjectDetail }) {
                 </div>
                 <p className="tnum mt-1 text-[12.5px] leading-snug text-ink-3">
                   Requested by {cr.requested_by_client || 'the client'}
-                  {cr.requested_on ? ` on ${fmtDate(cr.requested_on)}` : ''}. {cr.hours ? `${fmtNum(cr.hours, 1)}h effort` : 'Not estimated yet'}, {cr.impact_days ?? 0} working day{cr.impact_days === 1 ? '' : 's'} impact, billable {fmtMoney(cr.value_paise)}.
+                  {cr.requested_on ? ` on ${fmtDate(cr.requested_on)}` : ''}. {cr.hours ? `${fmtNum(cr.hours, 1)}h effort` : 'Not estimated yet'}, {cr.impact_days ?? 0} working day{cr.impact_days === 1 ? '' : 's'} impact{v9.value_paise !== null ? `, billable ${fmtMoney(cr.value_paise)}` : ''}.
                 </p>
                 {(cr.note || cr.description) && <p className="mt-0.5 max-w-[90ch] text-[12.5px] leading-snug text-ink-2">{cr.note || cr.description}</p>}
                 {(cr.proposed_tasks ?? []).length > 0 && (
@@ -77,7 +86,30 @@ export function ChangesTab({ d }: { d: ProjectDetail }) {
                   </p>
                 )}
                 {cr.tasks_added_on && <p className="mt-0.5 text-[12.5px] text-success-text">Tasks added to the WBS on {fmtDate(cr.tasks_added_on.slice(0, 10))}.</p>}
-                {editable && (open || (approved && !cr.tasks_added_on) || cr.status === 'approved') && (
+                {(v9.sent_to ?? []).length > 0 && !c.recipient_view && (
+                  <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12.5px] text-ink-3">
+                    <Send className="size-3.5" aria-hidden />
+                    <span>Sent to</span>
+                    {(v9.sent_to ?? []).map((x) => (
+                      <span key={x.user_id} className={cn('inline-flex items-center gap-1', x.seen_at ? 'text-ink-2' : 'text-ink-3')} title={x.seen_at ? `Seen ${fmtDateTime(x.seen_at)}` : `Sent ${fmtDateTime(x.sent_at)} · not seen yet`}>
+                        {people.get(x.user_id)?.name ?? 'Someone'}
+                        {x.seen_at && <CheckCheck className="size-3.5 text-success-text" aria-label="seen" />}
+                      </span>
+                    ))}
+                    {v9.send_note && <span className="basis-full text-ink-3">“{v9.send_note}”</span>}
+                  </p>
+                )}
+                {mine && (
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-[12.5px] text-ink-3">
+                    <span>Sent to you by {people.get(mine.sent_by)?.name ?? 'the project manager'} · {fmtDateTime(mine.sent_at)}{v9.send_note ? ` — “${v9.send_note}”` : ''}</span>
+                    {mine.seen_at ? (
+                      <span className="inline-flex items-center gap-1 text-success-text"><CheckCheck className="size-3.5" />Acknowledged {fmtDateTime(mine.seen_at)}</span>
+                    ) : (
+                      <Button size="sm" icon={<CheckCheck className="size-3.5" />} disabled={readOnly} loading={seen.isPending} onClick={() => seen.mutate(v9)}>Mark as read</Button>
+                    )}
+                  </div>
+                )}
+                {editable && (
                   <div className="mt-2.5 flex flex-wrap gap-2">
                     {open && (
                       <>
@@ -109,6 +141,9 @@ export function ChangesTab({ d }: { d: ProjectDetail }) {
                         Mark delivered
                       </Button>
                     )}
+                    <Button size="sm" variant="ghost" icon={<Send className="size-3.5" />} onClick={() => setSending(v9)}>
+                      {(v9.sent_to ?? []).length ? 'Send again' : 'Send to team'}
+                    </Button>
                   </div>
                 )}
               </li>
@@ -119,7 +154,85 @@ export function ChangesTab({ d }: { d: ProjectDetail }) {
       <CrDialog d={d} next={c.next_number} open={edit.open} cr={edit.cr} onOpenChange={(o) => setEdit((x) => ({ ...x, open: o }))} />
       <DecideDialog d={d} cr={decide} onClose={() => setDecide(null)} />
       <AddTasksDialog d={d} cr={addTasks} onClose={() => setAddTasks(null)} />
+      <SendDialog d={d} cr={sending} onClose={() => setSending(null)} />
     </Card>
+  )
+}
+
+function useMyId() {
+  return useSession().user?.id ?? null
+}
+
+/* ---------------- v9: send to the team ---------------- */
+function SendDialog({ d, cr, onClose }: { d: ProjectDetail; cr: ChangeRequestV9 | null; onClose: () => void }) {
+  const people = usePeopleMap()
+  const myId = useMyId()
+  const team = d.team_ids.filter((id) => id !== myId && people.get(id)?.status === 'active')
+  const [picked, setPicked] = useState<string[]>([])
+  const [extra, setExtra] = useState<string | null>(null)
+  const [note, setNote] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  useEffect(() => {
+    if (!cr) return
+    setPicked([])
+    setExtra(null)
+    setNote('')
+    setError(null)
+  }, [cr])
+  const send = useMut(() => crSendApi.send(cr!.id, { user_ids: [...picked, ...(extra && !picked.includes(extra) ? [extra] : [])], note }), {
+    invalidate: [...INV(d.project.id), ['change-requests']],
+    success: (r) => `CR-${r.number} sent`,
+    silentError: true,
+    onSuccess: onClose,
+    onError: (e) => setError(e.message),
+  })
+  const others = [...picked, ...(extra ? [extra] : [])].filter((x, i, a) => a.indexOf(x) === i)
+  const already = new Set((cr?.sent_to ?? []).map((x) => x.user_id))
+  return (
+    <Dialog
+      open={!!cr}
+      onOpenChange={(o) => !o && onClose()}
+      title={cr ? `Send CR-${cr.number} to the team` : 'Send to the team'}
+      description="They get a notification and an e-mail, and see it in the project’s Changes tab and under Delivery › Change requests. The decision stays with you."
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button variant="primary" icon={<Send className="size-4" />} loading={send.isPending} disabled={!others.length} onClick={() => send.mutate(undefined)}>
+            Send to {others.length || ''} {others.length === 1 ? 'person' : 'people'}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        {cr && <p className="text-[13px] text-ink-2"><span className="font-semibold">CR-{cr.number}</span> {cr.title}</p>}
+        <fieldset>
+          <legend className="mb-1.5 text-[13px] font-medium text-ink-2">Project team</legend>
+          {team.length ? (
+            <ul className="grid gap-1.5 sm:grid-cols-2">
+              {team.map((id) => (
+                <li key={id}>
+                  <Checkbox
+                    checked={picked.includes(id)}
+                    onChange={(v) => setPicked((x) => (v ? [...x, id] : x.filter((y) => y !== id)))}
+                    label={people.get(id)?.name ?? id}
+                    description={already.has(id) ? 'Already sent — sends it again' : people.get(id)?.title}
+                  />
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-[12.5px] text-ink-3">No one else is on this project yet.</p>
+          )}
+        </fieldset>
+        <Field label="Someone else" hint="Anyone in the company; they see it under Change requests › Sent to me.">
+          <PeoplePicker value={extra} onChange={setExtra} clearable filter={(p) => p.id !== myId} />
+        </Field>
+        <Field label="Note" hint="Optional. What you need from them, e.g. “Check the effort for the API changes by Friday.”">
+          <Textarea rows={3} value={note} maxLength={1000} onChange={(e) => setNote(e.target.value)} />
+        </Field>
+        {error && <p role="alert" className="text-[12.5px] font-medium text-danger-text">{error}</p>}
+      </div>
+    </Dialog>
   )
 }
 

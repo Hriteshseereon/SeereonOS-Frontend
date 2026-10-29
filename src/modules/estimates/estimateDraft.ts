@@ -19,6 +19,12 @@ export interface EstRow {
   from_on: string | null // null = follow the milestone
   to_on: string | null
 }
+export interface EstMilestone {
+  key: string
+  name: string
+  amount_paise: number
+  pct: string
+}
 export interface EstDraft {
   name: string
   client: string
@@ -31,18 +37,20 @@ export interface EstDraft {
   end_on: string
   description: string
   notes: string
-  msText: string
+  msText: string // quick-add box (paste "name | amount" lines)
+  /** v9 milestone-wise price breakdown: each milestone bills an amount, or a % of the price */
+  ms: EstMilestone[]
+  split: 'amount' | 'pct'
   rows: EstRow[]
   costing: CostingDraft // additional costs, maintenance, contingency, markup ⇄ price (rows unused)
 }
 
-const rupeesText = (p: number) => String(Math.round(p / 100))
 
 export function blankDraft(): EstDraft {
   const start = todayISO()
   return {
     name: '', client: '', client_id: null, deal_id: null, type: 'service', billing_model: 'fixed', stream: null,
-    start_on: start, end_on: addMonths(start, 3), description: '', notes: '', msText: '', rows: [], costing: emptyDraft(),
+    start_on: start, end_on: addMonths(start, 3), description: '', notes: '', msText: '', ms: [], split: 'pct', rows: [], costing: { ...emptyDraft(), markup_pct: '50' },
   }
 }
 
@@ -52,10 +60,12 @@ export function draftFromDetail(d: EstimateDetail): EstDraft {
   return {
     name: e.name, client: e.client, client_id: e.client_id ?? null, deal_id: e.deal_id, type: e.type, billing_model: e.billing_model, stream: e.stream ?? null,
     start_on: e.start_on, end_on: e.end_on, description: e.description ?? '', notes: e.notes,
-    msText: e.milestones.map((m) => (m.billing_amount_paise ? `${m.name} | ${rupeesText(m.billing_amount_paise)}` : m.name)).join('\n'),
+    msText: '',
+    ms: e.milestones.map((m) => ({ key: newKey('m'), name: m.name, amount_paise: m.billing_amount_paise, pct: m.billing_pct !== undefined && m.billing_pct !== null ? String(m.billing_pct) : '' })),
+    split: e.milestones.length > 0 && e.milestones.every((m) => m.billing_pct !== undefined && m.billing_pct !== null) ? 'pct' : 'amount',
     rows: e.resources.map((r) => ({
       key: r.id, kind: r.user_id ? 'person' : 'role', user_id: r.user_id, role_label: r.role_label ?? '', ctc_paise: r.monthly_ctc_paise ?? 0,
-      ms: idx.has(r.milestone_key) ? String(idx.get(r.milestone_key)) : '', pct: String(r.pct), from_on: r.from_on, to_on: r.to_on,
+      ms: r.milestone_key !== null && idx.has(r.milestone_key) ? String(idx.get(r.milestone_key)) : '', pct: String(r.pct), from_on: r.from_on, to_on: r.to_on,
     })),
     costing: {
       rows: [],
@@ -71,7 +81,16 @@ export function draftFromDetail(d: EstimateDetail): EstDraft {
 
 export function milestonesOf(d: EstDraft) {
   const parsed = parseMilestoneLines(d.msText)
-  return { parsed, list: parsed.items.filter((x) => !x.error).map((x) => ({ name: x.name, billing_amount_paise: x.amount_paise })) }
+  const list = d.ms
+    .filter((m) => m.name.trim())
+    .map((m) => (d.split === 'pct' ? { name: m.name.trim(), billing_amount_paise: 0, billing_pct: Number(m.pct) || 0 } : { name: m.name.trim(), billing_amount_paise: m.amount_paise }))
+  return { parsed, list }
+}
+
+/** Quick add: the pasted "name | amount" lines become milestone rows. */
+export function addPasted(d: EstDraft): EstDraft {
+  const items = parseMilestoneLines(d.msText).items.filter((x) => !x.error)
+  return { ...d, msText: '', ms: [...d.ms, ...items.map((x) => ({ key: newKey('m'), name: x.name, amount_paise: x.amount_paise, pct: '' }))], split: items.some((x) => x.amount_paise > 0) ? 'amount' : d.split }
 }
 
 const numOrNull = (s: string) => (s.trim() === '' || !Number.isFinite(Number(s)) ? null : Number(s))

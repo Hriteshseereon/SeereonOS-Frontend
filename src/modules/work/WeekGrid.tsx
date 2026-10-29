@@ -5,7 +5,7 @@ import { parseISO } from '@/domain/calendar'
 import { fmtNum } from '@/domain/money'
 import { cn } from '@/lib/utils'
 import { Combobox, IconButton, Tooltip, type ComboOption } from '@/ui'
-import { countedTotal, dayTotal, fmtH, parseHours, round2, rowTotal, snap, type DraftRow } from './timesheetModel'
+import { countedTotal, dayTotal, fmtH, isProjectWork, parseHours, round2, rowTotal, snap, type DraftRow } from './timesheetModel'
 
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const dow = (d: string) => DOW[parseISO(d).getDay()]
@@ -60,7 +60,8 @@ function pickOptions(items: WorkItem[] | undefined, rows: DraftRow[]): ComboOpti
   return (items ?? []).filter((it) => it.kind !== 'leave' && !used.has(it.key)).map((it) => ({ value: it.key, label: it.label, hint: it.hint, group: it.group }))
 }
 
-const sectionOf = (r: DraftRow) => (r.kind === 'task' ? 'tasks' : 'activities')
+/** v9 (D5): tasks · project work without a task · activities (non-project) and leave */
+const sectionOf = (r: DraftRow) => (r.kind === 'task' ? 'tasks' : isProjectWork(r) ? 'project' : 'activities')
 
 /* ================================================================== */
 /* Desktop grid                                                        */
@@ -96,6 +97,7 @@ export function DesktopGrid({ view, rows, editable, today, items, itemsLoading, 
   const weekTotal = round2(rows.reduce((s, r) => s + rowTotal(r), 0))
   const options = pickOptions(items, rows)
   const tasks = rows.map((r, i) => ({ r, i })).filter((x) => sectionOf(x.r) === 'tasks')
+  const projWork = rows.map((r, i) => ({ r, i })).filter((x) => sectionOf(x.r) === 'project')
   const acts = rows.map((r, i) => ({ r, i })).filter((x) => sectionOf(x.r) === 'activities')
   const span = days.length + 2 + (editable ? 1 : 0)
   const dayW = compact ? 'w-[68px]' : 'w-[84px]'
@@ -210,6 +212,7 @@ export function DesktopGrid({ view, rows, editable, today, items, itemsLoading, 
                 </tr>
               ) : undefined,
             )}
+            {projWork.length > 0 && section('Project work without a task', projWork, null)}
             {section(
               'Activities',
               acts,
@@ -257,16 +260,17 @@ export function DesktopGrid({ view, rows, editable, today, items, itemsLoading, 
   )
 }
 
-function ProjectSelect({ value, onChange, projects, className, disabled }: { value: string | null; onChange: (v: string | null) => void; projects: { id: string; code: string; name: string }[]; className?: string; disabled?: boolean }) {
+function ProjectSelect({ value, onChange, projects, className, disabled, required }: { value: string | null; onChange: (v: string | null) => void; projects: { id: string; code: string; name: string }[]; className?: string; disabled?: boolean; required?: boolean }) {
   return (
     <select
       value={value ?? ''}
       disabled={disabled}
       onChange={(e) => onChange(e.target.value || null)}
-      aria-label="Project"
-      className={cn('h-8 w-full min-w-0 rounded-md border border-line bg-surface px-2 text-[12.5px] text-ink outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/15 disabled:opacity-60', className)}
+      aria-label={required ? 'Project (required)' : 'Project'}
+      aria-invalid={(required && !value) || undefined}
+      className={cn('h-8 w-full min-w-0 rounded-md border border-line bg-surface px-2 text-[12.5px] text-ink outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/15 disabled:opacity-60 aria-[invalid=true]:border-warning aria-[invalid=true]:bg-warning-soft/40', className)}
     >
-      <option value="">No project</option>
+      <option value="">{required ? 'Choose the project' : 'No project'}</option>
       {projects.map((p) => (
         <option key={p.id} value={p.id}>
           {p.code} · {p.name}
@@ -276,12 +280,12 @@ function ProjectSelect({ value, onChange, projects, className, disabled }: { val
   )
 }
 
-function NoteInput({ value, onChange, required, invalid, className, label }: { value: string; onChange: (v: string) => void; required?: boolean; invalid?: boolean; className?: string; label: string }) {
+function NoteInput({ value, onChange, required, invalid, className, label, placeholder }: { value: string; onChange: (v: string) => void; required?: boolean; invalid?: boolean; className?: string; label: string; placeholder?: string }) {
   return (
     <input
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      placeholder={required ? 'Note (required)' : 'Note'}
+      placeholder={placeholder ?? (required ? 'Note (required)' : 'Note')}
       aria-label={label}
       aria-invalid={invalid || undefined}
       className={cn(
@@ -294,7 +298,8 @@ function NoteInput({ value, onChange, required, invalid, className, label }: { v
 
 function RowLabel({ r, editable, projects, noteRequired, onPatch }: { r: DraftRow; editable: boolean; projects: { id: string; code: string; name: string }[]; noteRequired: boolean; onPatch: (p: Partial<DraftRow>) => void }) {
   const isBreaks = r.internal_code === 'breaks'
-  const needsNote = r.kind === 'internal' && !isBreaks && noteRequired && rowTotal(r) > 0 && r.note.trim().length < 3
+  const pw = isProjectWork(r)
+  const needsNote = r.kind === 'internal' && !isBreaks && (noteRequired || pw) && rowTotal(r) > 0 && r.note.trim().length < 3
   const projectName = r.project_id ? projects.find((p) => p.id === r.project_id) : null
   return (
     <div className="min-w-0">
@@ -314,8 +319,8 @@ function RowLabel({ r, editable, projects, noteRequired, onPatch }: { r: DraftRo
       {r.kind === 'internal' &&
         (editable ? (
           <div className="mt-1.5 grid max-w-[420px] grid-cols-2 gap-1.5">
-            {isBreaks ? <div className="col-span-2 self-center text-[12px] text-ink-3">Internal · lunch, tea and the daily stand-up</div> : <ProjectSelect value={r.project_id ?? null} onChange={(v) => onPatch({ project_id: v })} projects={projects} />}
-            {!isBreaks && <NoteInput value={r.note} onChange={(note) => onPatch({ note })} required={noteRequired} invalid={needsNote} label={`Note for ${r.label}`} />}
+            {isBreaks ? <div className="col-span-2 self-center text-[12px] text-ink-3">Internal · lunch, tea and the daily stand-up</div> : <ProjectSelect value={r.project_id ?? null} onChange={(v) => onPatch({ project_id: v })} projects={projects} required={pw} />}
+            {!isBreaks && <NoteInput value={r.note} onChange={(note) => onPatch({ note })} required={noteRequired || pw} invalid={needsNote} label={`Note for ${r.label}`} placeholder={pw ? 'What did you work on? (required)' : undefined} />}
           </div>
         ) : (
           r.note && <div className="mt-0.5 truncate text-[12px] italic text-ink-2">“{r.note}”</div>
@@ -351,13 +356,13 @@ function EmptyRow({ rowIndex, days, view, empty, onEmpty, options, itemsLoading,
             options={options}
             placeholder={itemsLoading ? 'Loading your tasks…' : 'Choose a task or activity…'}
             searchPlaceholder="Search tasks and activities"
-            emptyText="Nothing matches. Only tasks you own, back up or are allocated to appear here."
+            emptyText="Nothing matches. Only tasks you own, are assigned to, back up or are allocated to appear here. Use “Project work (no task)” for other project time."
             className="h-8 bg-surface text-[13px]"
           />
           <ProjectSelect value={empty.project_id} onChange={(v) => set({ project_id: v })} projects={projects} />
         </div>
         <NoteInput value={empty.note} onChange={(note) => set({ note })} label="Note for the new row" className="mt-1.5" />
-        <div className="mt-1 text-[11.5px] text-ink-3">Empty row: pick a task or activity</div>
+        <div className="mt-1 text-[11.5px] text-ink-3">Empty row: pick a task, “Project work (no task)” or an activity</div>
       </td>
       {days.map((d, ci) => (
         <td key={d.date} className={cn('px-1 py-1.5 align-top', muted(d) && 'bg-surface-2')}>
@@ -556,9 +561,11 @@ export function DayList({ view, rows, editable, day, today, items, itemsLoading,
   const options = pickOptions(items, rows)
   const note = dayNote(day)
   const visible = editable ? rows : rows.filter((r) => (r.hours[day.date] ?? 0) > 0)
+  const pwRows = visible.filter((r) => sectionOf(r) === 'project')
   const groups: [string, DraftRow[]][] = [
     ['Tasks', visible.filter((r) => r.kind === 'task')],
-    ['Activities', visible.filter((r) => r.kind !== 'task')],
+    ...(pwRows.length ? [['Project work without a task', pwRows] as [string, DraftRow[]]] : []),
+    ['Activities', visible.filter((r) => sectionOf(r) === 'activities')],
   ]
   return (
     <div>
@@ -634,8 +641,8 @@ export function DayList({ view, rows, editable, day, today, items, itemsLoading,
                     </div>
                     {r.kind === 'internal' && editable && !isBreaks && (
                       <div className="mt-2 grid grid-cols-1 gap-2 min-[420px]:grid-cols-2">
-                        <ProjectSelect value={r.project_id ?? null} onChange={(v) => setRow(ri, { project_id: v })} projects={projects} className="h-10 text-[14px]" />
-                        <NoteInput value={r.note} onChange={(v) => setRow(ri, { note: v })} required={view.rules.note_required} label={`Note for ${r.label}`} className="h-10 text-[14px]" />
+                        <ProjectSelect value={r.project_id ?? null} onChange={(v) => setRow(ri, { project_id: v })} projects={projects} required={isProjectWork(r)} className="h-10 text-[14px]" />
+                        <NoteInput value={r.note} onChange={(v) => setRow(ri, { note: v })} required={view.rules.note_required || isProjectWork(r)} invalid={isProjectWork(r) && rowTotal(r) > 0 && r.note.trim().length < 3} placeholder={isProjectWork(r) ? 'What did you work on? (required)' : undefined} label={`Note for ${r.label}`} className="h-10 text-[14px]" />
                       </div>
                     )}
                     {r.kind === 'internal' && !editable && r.note && <div className="mt-1 text-[12.5px] italic text-ink-2">“{r.note}”</div>}
@@ -681,7 +688,7 @@ export function DayList({ view, rows, editable, day, today, items, itemsLoading,
                 <ProjectSelect value={empty.project_id} onChange={(v) => onEmpty?.({ ...empty, project_id: v })} projects={projects} className="h-10 text-[14px]" />
                 <NoteInput value={empty.note} onChange={(v) => onEmpty?.({ ...empty, note: v })} label="Note for the new row" className="h-10 text-[14px]" />
               </div>
-              <div className="mt-1.5 text-[12px] text-ink-3">Empty row: pick a task or activity. The project applies to activities.</div>
+              <div className="mt-1.5 text-[12px] text-ink-3">Empty row: pick a task, project work without a task, or an activity. The project applies to project work and activities.</div>
             </div>
           )}
         </div>

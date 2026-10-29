@@ -68,6 +68,7 @@ export default function TeamPage() {
         subtitle="Timesheet compliance, utilisation and approval discipline across your people."
         actions={
           <Select
+            aria-label="Period"
             className="w-full md:w-[160px]"
             value={String(weeks)}
             onChange={(e) => setWeeks(Number(e.target.value))}

@@ -385,6 +385,8 @@ export interface CostingResourceInput {
   pct: number | null
   from_on: string | null
   to_on: string | null
+  /** V9-FIX: role name of a converted estimate's placeholder row (no person yet) — used in the "assign a person" message */
+  role_label?: string | null
 }
 export interface CostingAdditionalInput {
   id?: string
@@ -443,6 +445,30 @@ export interface CostingTotals {
   man_days: number
   resource_rows: number
   people: number
+  /** v9 (D1): Total cost by Commercials category — resource cost, office & hardware, expenses, miscellaneous, maintenance */
+  groups?: CostGroup[]
+  /** v9: per allocated person — man-days, the cost their rows add, their % share of the resource cost */
+  people_share?: PersonShare[]
+}
+export type CostGroupKey = 'resources' | 'office_hardware' | 'expenses' | 'misc' | 'maintenance'
+export interface CostGroup {
+  key: CostGroupKey
+  label: string
+  amount: number | null
+  lines: number
+}
+export interface PersonShare {
+  key?: string
+  kind?: 'person' | 'role'
+  user_id: string | null
+  role_label?: string | null
+  name?: string
+  rows: number
+  man_days: number
+  hours?: number
+  cost: number | null
+  /** 0..1 of the resource cost; null without money access */
+  share: number | null
 }
 export interface PlannedMilestone {
   index: number

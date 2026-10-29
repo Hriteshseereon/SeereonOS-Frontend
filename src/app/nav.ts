@@ -1,6 +1,6 @@
 import type { LucideIcon } from '@/ui/icons'
 import {
-  BarChart3, Briefcase, Building2, Calculator, CalendarClock, CheckSquare, ClipboardCheck, ClipboardList, Coins, CreditCard, Database, Eye, FileBarChart, FileText, FileUp,
+  BarChart3, Briefcase, Building2, Calculator, CalendarClock, CheckSquare, ClipboardCheck, Coins, CreditCard, Database, Eye, FileBarChart, FileText, FileUp,
   Flag, FolderKanban, Gauge, GitBranch, HandCoins, History, Home, Inbox, Laptop, LineChart, ListChecks, ListTree, Palmtree, Plus, Receipt, Route, Settings, Shield,
   SlidersHorizontal, Sparkles, Stamp, Target, TrendingDown, TrendingUp, Trophy, UserCheck, UserPlus, Users, Wallet, Workflow, Wrench, Award, BookOpen, PencilRuler, Paperclip, Landmark, UserCog,
 } from '@/ui/icons'
@@ -39,7 +39,9 @@ export interface NavSection {
   items: NavItem[]
 }
 
-export const SETUP_NAV_ACTIONS: Action[] = ['master.view', 'roles.view', 'makerchecker.configure', 'workflows.manage', 'emails.view']
+export const SETUP_NAV_ACTIONS: Action[] = ['master.view', 'roles.view', 'makerchecker.configure', 'workflows.manage', 'emails.view', 'people.manage', 'holidays.edit', 'finance.edit']
+/** v9: who sees the Admin setup hub (/setup) — the same list as GET /setup/hub on the server. */
+export const SETUP_HUB_ACTIONS: Action[] = ['master.view', 'roles.view', 'employees.create', 'workflows.manage', 'makerchecker.configure', 'emails.view', 'people.manage', 'holidays.edit', 'finance.view', 'settings.edit']
 /** Anyone who can check changes, or make a change that may need checking, sees the change queue. */
 export const CHANGE_NAV_ACTIONS: Action[] = ['makerchecker.check', 'makerchecker.configure', 'roles.manage', 'users.manage', 'workflows.manage', 'master.edit', 'cost_rates.edit', 'payroll.finalise', 'procurement.manage', 'budgets.manage']
 
@@ -106,7 +108,7 @@ export const NAV: NavSection[] = [
           // Feature Guide §7: the Tasks tab, for everyone (server scopes what each person sees)
           { to: '/tasks', label: 'All tasks', icon: ListChecks, keywords: 'tasks' },
           { to: '/tasks/new', label: 'Create task', icon: Plus, end: true, keywords: 'new task assign' },
-          { to: '/team-tasks', label: 'Team tasks', icon: ClipboardList, action: 'tasks.assign_team' },
+          // v9: Team tasks is a tab of All tasks (/tasks?view=team, still tasks.assign_team); /team-tasks redirects there
           { to: '/approvals', label: 'Timesheet approvals', icon: ClipboardCheck, anyOf: ['team.view', 'leave.approve', 'tasks.review', 'people.view_all'] },
         ],
       },
@@ -134,7 +136,7 @@ export const NAV: NavSection[] = [
           { to: '/openings', label: 'Openings', icon: Openings, action: 'openings.manage' },
           { to: '/lifecycle', label: 'Onboarding & exits', icon: UserCheck, action: 'people.manage' },
           { to: '/assets', label: 'Assets', icon: Laptop, action: 'people.manage' },
-          { to: '/team', label: 'Team', icon: TeamIcon, action: 'team.view', keywords: 'utilisation timesheet grid' },
+          { to: '/team', label: 'Team', icon: TeamIcon, anyOf: ['team.view', 'people.view_all'], keywords: 'teams members utilisation timesheet grid' },
         ],
       },
       {
@@ -144,7 +146,7 @@ export const NAV: NavSection[] = [
         children: [
           { to: '/sales', label: 'Pipeline', icon: Target, action: 'deals.edit_own', end: true, keywords: 'deals' },
           { to: '/sales/activity', label: 'Activity log', icon: History, action: 'deals.edit_own' },
-          { to: '/clients', label: 'Clients & contracts', icon: Building2, action: 'clients.manage' },
+          { to: '/clients', label: 'Customers & contracts', icon: Building2, action: 'clients.manage', keywords: 'clients customers gstin' },
           { to: '/sales/performance', label: 'Performance', icon: TrendingUp, action: 'sales.performance_own' },
           { to: '/sales/compensation', label: 'Compensation', icon: HandCoins, action: 'sales.performance_own', keywords: 'commission incentive' },
         ],
@@ -174,6 +176,7 @@ export const NAV: NavSection[] = [
           { to: '/documents?tab=issued', label: 'Issued documents', icon: Stamp, action: 'documents.templates', keywords: 'letters issued shared' },
           { to: '/documents?tab=policies', label: 'Policies', icon: Shield, keywords: 'policy handbook' },
           { to: '/documents?tab=employees', label: 'Employee documents', icon: Users, action: 'documents.employee_files', keywords: 'employee files uploads' },
+          { to: '/documents?tab=team', label: 'Team documents', icon: TeamIcon, action: 'documents.employee_files', keywords: 'team employee files hr' },
           { to: '/documents?tab=mine', label: 'My documents', icon: FileText, keywords: 'payslips letters my files' },
         ],
       },
@@ -196,7 +199,7 @@ export const NAV: NavSection[] = [
         label: 'Admin',
         icon: SlidersHorizontal,
         children: [
-          { to: '/setup', label: 'Organisation setup', icon: SlidersHorizontal, anyOf: SETUP_NAV_ACTIONS, keywords: 'master data roles departments' },
+          { to: '/setup', label: 'Organisation setup', icon: SlidersHorizontal, anyOf: SETUP_NAV_ACTIONS, keywords: 'admin setup master data roles departments leave policy holiday calendar opening balances' },
           { to: '/people', label: 'People & users', icon: Users, action: 'users.view', keywords: 'employees users' },
           { to: '/changes', label: 'Change approvals', icon: Stamp, anyOf: CHANGE_NAV_ACTIONS, badge: 'changes', keywords: 'maker checker' },
           { to: '/billing', label: 'Billing', icon: CreditCard, action: 'billing.manage', keywords: 'plan subscription' },

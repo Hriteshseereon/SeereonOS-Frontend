@@ -99,7 +99,7 @@ export function DataTable<T>({
               {selectable ? (
                 <div className="flex items-start gap-3">
                   <div onClick={(e) => e.stopPropagation()} className="pt-0.5">
-                    <Checkbox checked={sel.has(rowKey(r))} onChange={(v) => onSelectedChange?.(v ? [...sel, rowKey(r)] : [...sel].filter((x) => x !== rowKey(r)))} />
+                    <Checkbox aria-label="Select row" checked={sel.has(rowKey(r))} onChange={(v) => onSelectedChange?.(v ? [...sel, rowKey(r)] : [...sel].filter((x) => x !== rowKey(r)))} />
                   </div>
                   <div className="min-w-0 flex-1">{mobileCard(r)}</div>
                 </div>
@@ -119,7 +119,7 @@ export function DataTable<T>({
               <tr className="border-b border-line bg-surface-2/70">
                 {selectable && (
                   <th className="w-10 pl-4">
-                    <Checkbox checked={allSel} onChange={(v) => onSelectedChange?.(v ? visible.map(rowKey) : [])} />
+                    <Checkbox aria-label="Select all rows" checked={allSel} onChange={(v) => onSelectedChange?.(v ? visible.map(rowKey) : [])} />
                   </th>
                 )}
                 {columns.map((c) => {
@@ -161,7 +161,7 @@ export function DataTable<T>({
                 >
                   {selectable && (
                     <td className="w-10 pl-4" onClick={(e) => e.stopPropagation()}>
-                      <Checkbox checked={sel.has(rowKey(r))} onChange={(v) => onSelectedChange?.(v ? [...sel, rowKey(r)] : [...sel].filter((x) => x !== rowKey(r)))} />
+                      <Checkbox aria-label="Select row" checked={sel.has(rowKey(r))} onChange={(v) => onSelectedChange?.(v ? [...sel, rowKey(r)] : [...sel].filter((x) => x !== rowKey(r)))} />
                     </td>
                   )}
                   {columns.map((c) => (

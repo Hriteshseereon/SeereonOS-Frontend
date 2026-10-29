@@ -15,7 +15,7 @@ export interface RoleDef extends Base {
 /* ---------------- Maker-checker ---------------- */
 export type ChangeEntity =
   | 'role' | 'user_access' | 'employee' | 'cost_rate' | 'workflow' | 'org_profile' | 'master_record' | 'shift'
-  | 'vendor' | 'budget' | 'payroll_finalise' | 'settings' | 'makerchecker_config'
+  | 'vendor' | 'budget' | 'payroll_finalise' | 'settings' | 'makerchecker_config' | 'opening_balance'
 export interface ChangeSet extends Base {
   entity: ChangeEntity
   entity_id: ID | null // null for creates
@@ -59,6 +59,7 @@ export const CHANGE_ENTITY_LABEL: Record<ChangeEntity, string> = {
   payroll_finalise: 'Payroll finalisation',
   settings: 'Company settings',
   makerchecker_config: 'Maker-checker settings',
+  opening_balance: 'Financial-year opening balances',
 }
 
 /* ---------------- Approval workflows ---------------- */
@@ -116,7 +117,9 @@ export interface Location extends Base {
   city: string
   state: string
   timezone: string
-  holiday_calendar: string // name; holidays table is tenant-wide in v1
+  holiday_calendar: string // name of the location's calendar (display copy)
+  /** v9: the location's holiday calendar (absent = the default calendar) */
+  holiday_calendar_id?: string | null
   is_head_office: boolean
   active: boolean
 }

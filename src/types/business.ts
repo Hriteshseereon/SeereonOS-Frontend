@@ -78,12 +78,37 @@ export interface LeaveRequest extends Base {
   decided_by: ID | null
   decided_at: ISODateTime | null
   decision_reason: string | null
+  /** v9: supporting documents (metadata only; the file is fetched with GET /leave-requests/:id/attachments/:aid) */
+  attachments?: LeaveAttachment[]
+}
+export interface LeaveAttachment {
+  id: string
+  file_id: ID
+  name: string
+  mime: string
+  size_bytes: number
+  uploaded_by: ID
+  uploaded_at: ISODateTime
 }
 export interface LeavePolicy extends Base {
   type: LeaveType
   annual_days: number
   carry_forward_max: number
-  accrual: 'upfront' | 'monthly'
+  /** v9 (A5): + 'annual' — the full quota at the start of every FY (also in the year someone joins) */
+  accrual: 'upfront' | 'monthly' | 'annual'
+  // v9 (A5, D10) — optional policy fields (Admin › Leave types & policies); `type` may also be a custom code
+  name?: string
+  description?: string
+  active?: boolean
+  encashable?: boolean
+  encash_max_days?: number | null
+  applicable_role_keys?: string[]
+  applicable_location_ids?: string[]
+  applicable_employment_types?: string[]
+  /** null/absent = never; 0 = always; N = a supporting document is required when a request is MORE than N days */
+  attachment_after_days?: number | null
+  is_custom?: boolean
+  sort_order?: number
 }
 
 export type AppraisalCycleStatus = 'draft' | 'goal_setting' | 'self_review' | 'manager_review' | 'hr_review' | 'closed'
@@ -146,7 +171,7 @@ export interface Candidate extends Base {
   name: string
   email: string
   phone: string
-  source: 'referral' | 'job_portal' | 'linkedin' | 'campus' | 'agency' | 'website' | 'other'
+  source: 'referral' | 'job_portal' | 'linkedin' | 'campus' | 'agency' | 'website' | 'careers' | 'other'
   stage: CandidateStage
   experience_years: number
   current_ctc_paise: Paise | null
@@ -159,6 +184,13 @@ export interface Candidate extends Base {
   rejected_reason: string | null
   joining_on: ISODate | null
   user_id: ID | null // set when hired and converted to a user
+  // v9: applicants from the public careers link (source 'careers')
+  linkedin_url?: string | null
+  current_company?: string | null
+  current_title?: string | null
+  location?: string | null
+  cover_note?: string | null
+  consent_at?: ISODateTime | null
 }
 export interface Interview extends Base {
   candidate_id: ID

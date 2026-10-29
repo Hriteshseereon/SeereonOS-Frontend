@@ -52,6 +52,8 @@ export interface LedgerEntriesResult {
   items: LedgerEntryRow[]
   automatic: { key: 'milestone' | 'spend' | 'payroll'; label: string; count: number; amount: number }[]
   can_edit: boolean
+  /** v9 (A5): opening balances of this FY (only when entered) + cash today */
+  opening?: OpeningWithCash
 }
 
 /** G13.02 — ledger entries as entered (one line per entry; recurring ones once, not per month). */
@@ -83,6 +85,25 @@ export interface LedgerResult {
   totals: { income: number; expense: number; net: number; received: number; paid: number; expected_in: number; expected_out: number; count: number }
   categories: { income: string[]; expense: string[] }
   can_edit: boolean
+  /** v9 (A5): opening balances of the FY of `from` (only when entered) + cash at the end of the range */
+  opening?: OpeningWithCash
+}
+
+export type OpeningWithCash = OpeningSummary & { cash_in: number; cash_out: number; closing_cash: number; closing_on: string }
+/** v9 (A5): financial-year opening balances as the ledger / P&L show them (Admin › Opening balances). */
+export interface OpeningSummary {
+  fy_start_year: number
+  fy_label: string
+  as_of: string
+  cash: number
+  bank: number
+  cash_bank: number
+  receivables: number
+  payables: number
+  other_debit: number
+  other_credit: number
+  lines: number
+  locked: boolean
 }
 
 /* ------------------------------------------------------------------ */
@@ -127,7 +148,9 @@ export interface PnlResult {
   months: { month: string; label: string; billed: number; collected: number; cost: number; net: number; payroll: number; other_costs: number; net_pl: number }[]
   /** G13.01 — last 6 months ending this month (this month to date): payroll from payrollForMonth, other costs = non-salary ledger expenses */
   monthly: { month: string; label: string; billed: number; collected: number; payroll: number; other_costs: number; net: number; headcount: number; to_date: boolean }[]
-  cash: { opening: number; balance: number; monthly_burn: number; recurring_income: number; net_burn: number; runway_months: number | null; cash_positive: boolean }
+  cash: { opening: number; balance: number; monthly_burn: number; recurring_income: number; net_burn: number; runway_months: number | null; cash_positive: boolean; opening_source?: string }
+  /** v9 (A5): opening balances of the FY of `from` (only when entered) */
+  opening_balances?: OpeningSummary
   revenue_ahead: { uninvoiced: number; uninvoiced_count: number; in_30: number; in_60: number; in_90: number; weighted_pipeline: number; open_pipeline: number; total: number }
 }
 

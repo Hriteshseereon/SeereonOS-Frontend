@@ -162,7 +162,7 @@ export interface ApprovalTeamView {
     user: { id: string; name: string; title: string; avatar_hue: number }
     approver_name: string | null
     via_delegation: boolean
-    cells: { week_start: string; status: WeekStatus | 'upcoming'; week_id: string | null; hours: number; unlock_requested: boolean; unlock_reason: string | null; unlocked_until: string | null; can_unlock: boolean }[]
+    cells: { week_start: string; status: WeekStatus | 'upcoming' | 'not_joined'; week_id: string | null; hours: number; unlock_requested: boolean; unlock_reason: string | null; unlocked_until: string | null; can_unlock: boolean }[]
   }[]
 }
 
@@ -350,6 +350,9 @@ export interface MyTaskV5 extends MyTaskBase {
   can_review: boolean
   covering_days?: string[]
   covering_reason?: 'leave' | 'delegation'
+  /** v9 (D4): co-assignees of the task; `co_assignee` = I am one of them (the owner submits) */
+  assignee_ids?: string[]
+  co_assignee?: boolean
 }
 export interface MyTasksV5 {
   tasks: MyTaskV5[]
@@ -413,6 +416,8 @@ export interface AllTaskRow {
   criteria_done?: number
   attachments?: number
   owner_department?: string | null
+  /** v9 (D4): co-assignees besides the owner (absent = none) */
+  assignee_ids?: string[]
 }
 export interface TaskDepLink {
   id: string
@@ -551,6 +556,8 @@ export interface TaskPatchV5 {
   due_change_reason?: string
   priority?: 'low' | 'normal' | 'high' | 'urgent'
   reviewer_id?: string | null
+  /** v9 (D4): replaces the co-assignees (never the owner) */
+  assignee_ids?: string[]
 }
 
 export const deliveryApi = {
@@ -578,6 +585,8 @@ export interface TeamTaskRowV5 {
   can_move: boolean
   can_submit: boolean
   can_review: boolean
+  /** v9 (D4) */
+  assignee_ids?: string[]
 }
 
 /* ---------------- v6: Tasks tab and task page (Feature Guide §7) ---------------- */
@@ -594,9 +603,10 @@ export const tasksTabApi = {
 }
 
 /* ---------------- v7: task visibility + professional create form ---------------- */
-export type TaskRelationV7 = 'owner' | 'covering' | 'backup' | 'reviewer' | 'concerned_manager' | 'project_manager' | 'assigned_by' | 'watcher' | 'tagged'
+export type TaskRelationV7 = 'owner' | 'assignee' | 'covering' | 'backup' | 'reviewer' | 'concerned_manager' | 'project_manager' | 'assigned_by' | 'watcher' | 'tagged'
 export const TASK_RELATION: Record<TaskRelationV7, { label: string; tone: 'neutral' | 'info' | 'warning' | 'success' | 'brand' }> = {
   owner: { label: 'Mine', tone: 'neutral' },
+  assignee: { label: 'Co-assignee', tone: 'brand' },
   covering: { label: 'Covering', tone: 'warning' },
   backup: { label: 'Backup', tone: 'neutral' },
   reviewer: { label: 'Reviewer', tone: 'info' },
@@ -637,6 +647,8 @@ export interface TaskDetailV7 extends TaskDetailV6 {
   can_tick_criteria?: boolean
   can_attach?: boolean
   can_create_followup?: boolean
+  /** v9 (D4): co-assignees besides the owner (absent = none) */
+  assignee_ids?: string[]
 }
 export interface TaskCreateOptionMilestone { id: string; no: number; name: string; planned_start: string; planned_end: string; next_wbs: string }
 export interface TaskCreateOptionProject {
@@ -677,6 +689,8 @@ export interface TaskCreateBody {
   milestone_id?: string | null
   tag?: string | null
   owner_id: string
+  /** v9 (D4): co-assignees besides the owner */
+  assignee_ids?: string[]
   backup_id?: string | null
   reviewer_id: string
   concerned_manager_id?: string | null

@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useId, useState, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react'
+import { createContext, forwardRef, useContext, useEffect, useId, useState, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react'
 import * as RSwitch from '@radix-ui/react-switch'
 import { ChevronDown, Search, X } from '@/ui/icons'
 import { cn } from '@/lib/utils'
@@ -7,20 +7,43 @@ import { rupees } from '@/domain/money'
 const control =
   'w-full rounded-md border border-line-strong/80 bg-surface px-3 text-ink shadow-[inset_0_1px_0_rgba(0,0,0,0.02)] placeholder:text-ink-3 transition-[border,box-shadow] outline-none focus:border-brand focus:ring-[3px] focus:ring-brand/15 disabled:bg-surface-2 disabled:text-ink-3 aria-[invalid=true]:border-danger aria-[invalid=true]:ring-danger/15'
 
+/** V9-FIX (item 13): a Field's label names the controls inside it even without htmlFor/id — Input, Select, Textarea,
+ *  MoneyInput and Combobox (PeoplePicker) take `aria-labelledby` from the Field when they have no aria-label /
+ *  aria-labelledby of their own, and `aria-describedby` points at the hint or error. */
+const FieldCtx = createContext<{ labelId?: string; descId?: string } | null>(null)
+
+/** Lets a label that is not a Field (e.g. a settings row) name the controls inside it, like Field does. */
+export function LabelScope({ labelId, descId, children }: { labelId?: string; descId?: string; children: ReactNode }) {
+  return <FieldCtx.Provider value={labelId || descId ? { labelId, descId } : null}>{children}</FieldCtx.Provider>
+}
+
+/** aria props a control inside a Field gets when it has no name of its own */
+export function useFieldAria(own: { 'aria-label'?: string; 'aria-labelledby'?: string; 'aria-describedby'?: string }): { 'aria-labelledby'?: string; 'aria-describedby'?: string } {
+  const f = useContext(FieldCtx)
+  if (!f) return {}
+  return {
+    ...(!own['aria-label'] && !own['aria-labelledby'] && f.labelId ? { 'aria-labelledby': f.labelId } : {}),
+    ...(!own['aria-describedby'] && f.descId ? { 'aria-describedby': f.descId } : {}),
+  }
+}
+
 export function Field({ label, hint, error, required, children, className, htmlFor, aside }: { label?: ReactNode; hint?: ReactNode; error?: string | null; required?: boolean; children: ReactNode; className?: string; htmlFor?: string; aside?: ReactNode }) {
+  const uid = useId()
+  const labelId = label ? `${uid}l` : undefined
+  const descId = error || hint ? `${uid}d` : undefined
   return (
     <div className={cn('flex min-w-0 flex-col gap-1.5', className)}>
       {label && (
         <div className="flex items-baseline justify-between gap-2">
-          <label htmlFor={htmlFor} className="text-[13px] font-medium text-ink-2">
+          <label id={labelId} htmlFor={htmlFor} className="text-[13px] font-medium text-ink-2">
             {label}
             {required && <span className="ml-0.5 text-danger-text">*</span>}
           </label>
           {aside}
         </div>
       )}
-      {children}
-      {error ? <p className="text-[12.5px] font-medium text-danger-text">{error}</p> : hint ? <p className="text-[12.5px] text-ink-3">{hint}</p> : null}
+      <FieldCtx.Provider value={labelId || descId ? { labelId, descId } : null}>{children}</FieldCtx.Provider>
+      {error ? <p id={descId} className="text-[12.5px] font-medium text-danger-text">{error}</p> : hint ? <p id={descId} className="text-[12.5px] text-ink-3">{hint}</p> : null}
     </div>
   )
 }
@@ -29,19 +52,21 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
   { className, invalid, prefix, suffix, ...rest },
   ref,
 ) {
+  const fa = useFieldAria(rest)
   if (prefix || suffix)
     return (
       <div className={cn('relative flex items-center', className)}>
         {prefix && <span className="pointer-events-none absolute left-3 text-ink-3">{prefix}</span>}
-        <input ref={ref} aria-invalid={invalid || undefined} className={cn(control, 'h-[var(--ctl-h)]', prefix ? 'pl-8' : '', suffix ? 'pr-10' : '')} {...rest} />
+        <input ref={ref} aria-invalid={invalid || undefined} className={cn(control, 'h-[var(--ctl-h)]', prefix ? 'pl-8' : '', suffix ? 'pr-10' : '')} {...fa} {...rest} />
         {suffix && <span className="absolute right-3 text-[13px] text-ink-3">{suffix}</span>}
       </div>
     )
-  return <input ref={ref} aria-invalid={invalid || undefined} className={cn(control, 'h-[var(--ctl-h)]', className)} {...rest} />
+  return <input ref={ref} aria-invalid={invalid || undefined} className={cn(control, 'h-[var(--ctl-h)]', className)} {...fa} {...rest} />
 })
 
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLTextAreaElement> & { invalid?: boolean }>(function Textarea({ className, invalid, rows = 3, ...rest }, ref) {
-  return <textarea ref={ref} rows={rows} aria-invalid={invalid || undefined} className={cn(control, 'min-h-[84px] resize-y py-2.5 leading-relaxed', className)} {...rest} />
+  const fa = useFieldAria(rest)
+  return <textarea ref={ref} rows={rows} aria-invalid={invalid || undefined} className={cn(control, 'min-h-[84px] resize-y py-2.5 leading-relaxed', className)} {...fa} {...rest} />
 })
 
 export interface Option {
@@ -53,9 +78,10 @@ export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSel
   { options, placeholder, className, invalid, ...rest },
   ref,
 ) {
+  const fa = useFieldAria(rest)
   return (
     <div className={cn('relative', className)}>
-      <select ref={ref} aria-invalid={invalid || undefined} className={cn(control, 'h-[var(--ctl-h)] appearance-none pr-9')} {...rest}>
+      <select ref={ref} aria-invalid={invalid || undefined} className={cn(control, 'h-[var(--ctl-h)] appearance-none pr-9')} {...fa} {...rest}>
         {placeholder !== undefined && <option value="">{placeholder}</option>}
         {options.map((o) => {
           const op = typeof o === 'string' ? { value: o, label: o } : o
@@ -80,12 +106,14 @@ export function MoneyInput({ value, onChange, id, invalid, placeholder = '0', di
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value])
   const show = text && !Number.isNaN(Number(text.replace(/,/g, ''))) ? new Intl.NumberFormat('en-IN').format(Number(text.replace(/,/g, ''))) : ''
+  const fa = useFieldAria({ 'aria-label': ariaLabel })
   return (
     <div className={cn('relative', className)}>
       <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-3">₹</span>
       <input
         id={id}
         aria-label={ariaLabel}
+        {...fa}
         inputMode="decimal"
         disabled={disabled}
         aria-invalid={invalid || undefined}
@@ -125,13 +153,14 @@ export function SearchInput({ value, onChange, placeholder = 'Search', className
   )
 }
 
-export function Checkbox({ checked, onChange, label, description, disabled, id }: { checked: boolean; onChange: (v: boolean) => void; label?: ReactNode; description?: ReactNode; disabled?: boolean; id?: string }) {
+export function Checkbox({ checked, onChange, label, description, disabled, id, 'aria-label': ariaLabel }: { checked: boolean; onChange: (v: boolean) => void; label?: ReactNode; description?: ReactNode; disabled?: boolean; id?: string; 'aria-label'?: string }) {
   const auto = useId()
   const cid = id ?? auto
   return (
     <label htmlFor={cid} className={cn('flex cursor-pointer items-start gap-2.5', disabled && 'cursor-not-allowed opacity-60')}>
       <input
         id={cid}
+        aria-label={ariaLabel}
         type="checkbox"
         checked={checked}
         disabled={disabled}

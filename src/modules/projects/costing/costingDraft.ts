@@ -13,6 +13,8 @@ export interface DraftRow {
   pct: string
   from_on: string | null // null = follow the milestone (or project) dates
   to_on: string | null
+  /** V9-FIX: the role a converted estimate's placeholder row stands for, until a person is chosen */
+  role_label?: string | null
 }
 export interface DraftAdd {
   key: string
@@ -54,7 +56,8 @@ export function draftFromPreview(p: CostingPreview): CostingDraft {
     contingency_pct: String(p.contingency_pct ?? 0),
     // a plan with a price reopens on that exact price; one without (new project, contract value 0) starts from the
     // markup, so it never opens at "price ₹0 → markup −100%"
-    markup_pct: hasPrice || (p.markup_pct !== null && p.markup_pct > -100) ? (p.markup_pct === null ? '0' : String(p.markup_pct)) : '0',
+    // v9 (D1): a plan never saved and without a price starts at the default 50% profit margin on actual cost
+    markup_pct: !hasPrice && !p.saved_at ? '50' : hasPrice || (p.markup_pct !== null && p.markup_pct > -100) ? (p.markup_pct === null ? '0' : String(p.markup_pct)) : '0',
     price_paise: hasPrice ? p.price_paise : null,
     price_mode: hasPrice ? 'price' : 'markup',
   }
@@ -73,6 +76,7 @@ export function draftToInput(d: CostingDraft): CostingInput {
       pct: numOrNull(r.pct),
       from_on: r.from_on || null,
       to_on: r.to_on || null,
+      ...(!r.user_id && r.role_label ? { role_label: r.role_label } : {}),
     })),
     additional_costs: d.additional.map((a) => ({ id: a.key, category: a.category, description: a.description, amount_paise: a.amount_paise })),
     maintenance_paise: d.maintenance_paise,

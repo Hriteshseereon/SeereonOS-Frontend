@@ -4,7 +4,7 @@ import type { PortfolioMargins } from '@/api/projects'
 import { fmtMoney } from '@/domain/money'
 import { ExportMenu } from '@/reports/ExportMenu'
 import { Badge, Card, CardHeader, ErrorState, PageHeader, Segmented, SkeletonRows, StatCard } from '@/ui'
-import { MarginKpis, MarginsTable, marginsExport, useMargins } from './MarginsPanel'
+import { MARGIN_SCOPE_LABEL, MarginKpis, MarginsTable, marginsExport, useMargins } from './MarginsPanel'
 
 export default function MarginsPage() {
   const [scope, setScope] = useState<PortfolioMargins['scope']>('active')
@@ -14,7 +14,7 @@ export default function MarginsPage() {
     <div>
       <PageHeader
         title="Profit margins"
-        subtitle="CEO view of profit margins across all projects: the same numbers for every project in one table. Visible only to the CEO and anyone given the margins permission."
+        subtitle="CEO view of profit margins across all projects: the same numbers for every project in one table. Totals cover the projects chosen below (Insights › Project margins totals live projects incl. on hold; Reports › Project margins all statuses). Visible only to the CEO and anyone given the margins permission."
         actions={<ExportMenu table={d ? () => marginsExport(d) : null} filename={`profit-margins-${scope}`} />}
       />
       <Segmented
@@ -22,9 +22,9 @@ export default function MarginsPage() {
         value={scope}
         onChange={setScope}
         options={[
-          { value: 'active', label: 'Active' },
-          { value: 'open', label: 'All open' },
-          { value: 'all', label: 'All projects' },
+          { value: 'active', label: MARGIN_SCOPE_LABEL.active },
+          { value: 'open', label: MARGIN_SCOPE_LABEL.open },
+          { value: 'all', label: MARGIN_SCOPE_LABEL.all },
         ]}
       />
       {q.isLoading ? (

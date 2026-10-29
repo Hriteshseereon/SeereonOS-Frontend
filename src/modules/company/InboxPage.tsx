@@ -207,7 +207,7 @@ function ListItem({ i, on, onClick, bulk, showCheck, checked, onCheck, mobile }:
     >
       {showCheck && (
         <div onClick={(e) => e.stopPropagation()} className={cn('shrink-0', !bulk && 'pointer-events-none opacity-40')} title={!bulk ? 'Has warnings — decide it individually' : undefined}>
-          <Checkbox checked={checked} disabled={!bulk} onChange={onCheck} />
+          <Checkbox aria-label="Select for bulk action" checked={checked} disabled={!bulk} onChange={onCheck} />
         </div>
       )}
       {i.requester ? <Avatar name={i.requester.name} hue={i.requester.hue} size={30} /> : <span className="grid size-[30px] shrink-0 place-items-center rounded-full bg-surface-2 text-[11px] font-semibold text-ink-3">{KIND_LABEL[i.kind].slice(0, 2).toUpperCase()}</span>}

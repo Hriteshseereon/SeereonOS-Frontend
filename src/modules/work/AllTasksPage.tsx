@@ -4,6 +4,8 @@
 // own, cover, back up, review, are the concerned manager of, assigned, watch or were tagged on — each row says why.
 // Filters: Person (owner), Project, Status (+ detailed stage), search, and quick chips Mine / Covering / Tagged me /
 // Overdue / Blocked. Desktop table (optional columns), phone cards, CSV export, Create task.
+// v9: the person filter matches the owner OR a co-assignee (D4); the "Team tasks" tab (tasks.assign_team) holds the
+// former Team tasks page (review queue, assign, team list, performance) — /tasks?view=team.
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { CalendarClock, Columns3, Download, ListChecks, MessageSquare, Users } from '@/ui/icons'
@@ -19,8 +21,9 @@ import { useSession } from '@/stores/session'
 import { storage } from '@/lib/storage'
 import { cn, saveFile, toCSV } from '@/lib/utils'
 import type { TaskStatus } from '@/types/entities'
-import { Badge, Button, Card, Checkbox, DataTable, EmptyState, FilterChips, PageHeader, PersonName, Popover, Progress, SearchInput, Segmented, Select, StatusBadge, toast, type Column } from '@/ui'
+import { Badge, Button, Card, Checkbox, DataTable, EmptyState, FilterChips, PageHeader, PersonName, Popover, Progress, SearchInput, Segmented, Select, StatusBadge, Tabs, toast, useCan, type Column } from '@/ui'
 import { CreateTaskButton } from './TaskForm'
+import { TeamTasksPanel } from './TeamTasksPage'
 import { StageSelect, TagBadge, type StageTask } from './taskStage'
 import { weekdays } from './TaskDrawerHost'
 
@@ -58,7 +61,32 @@ const toStage = (r: AllTaskRow): StageTask => ({
   can_move: r.can_move, can_submit: r.can_submit, can_review: r.can_review, can_edit: r.can_edit, owner_id: r.owner_id, backup_id: r.backup_id, logged_hours: r.logged_hours,
 })
 
+type View = 'all' | 'team'
+
 export default function AllTasksPage() {
+  const can = useCan()
+  const [sp, setSp] = useSearchParams()
+  const canTeam = can('tasks.assign_team')
+  const view: View = sp.get('view') === 'team' && canTeam ? 'team' : 'all'
+  const setView = (v: View) =>
+    setSp(() => {
+      const n = new URLSearchParams()
+      if (v === 'team') n.set('view', 'team')
+      return n
+    }, { replace: true })
+  const tabs = canTeam ? <Tabs<View> value={view} onChange={setView} tabs={[{ value: 'all', label: 'All tasks' }, { value: 'team', label: 'Team tasks' }]} /> : null
+  if (view === 'team')
+    return (
+      <div>
+        <PageHeader title="Tasks" subtitle="Team tasks: assign work to people who report to you, review what they submit and track on-time delivery." />
+        {tabs}
+        <TeamTasksPanel />
+      </div>
+    )
+  return <AllTasksList tabs={tabs} />
+}
+
+function AllTasksList({ tabs }: { tabs: ReactNode }) {
   const openTask = useUI((s) => s.openTask)
   const navigate = useNavigate()
   const people = usePeopleMap()
@@ -121,9 +149,9 @@ export default function AllTasksPage() {
   const grouped = viewAll && f.group === 'employee'
 
   const exportCsv = async () => {
-    const head = ['WBS', 'Task', 'Tag', 'Project', 'Milestone', 'Owner', 'Backup', 'Estimated h', 'Actual h', 'Start', 'Due', 'Complexity', 'Status', 'Stage', 'Progress %', 'Depends on', 'Blocked by', 'Comments', 'Reviewer', 'Concerned manager', 'Priority', 'Labels', 'Billable', 'Definition of done', 'Department']
+    const head = ['WBS', 'Task', 'Tag', 'Project', 'Milestone', 'Owner', 'Co-assignees', 'Backup', 'Estimated h', 'Actual h', 'Start', 'Due', 'Complexity', 'Status', 'Stage', 'Progress %', 'Depends on', 'Blocked by', 'Comments', 'Reviewer', 'Concerned manager', 'Priority', 'Labels', 'Billable', 'Definition of done', 'Department']
     const body = rows.map((r) => [
-      r.wbs, r.title, r.tag ?? '', r.general ? 'General & admin' : `${r.project_code} ${r.project_name}`, r.milestone_label ?? '', name(r.owner_id), r.backup_id ? name(r.backup_id) : '', r.est_hours, r.logged_hours, r.start_on, r.due_on,
+      r.wbs, r.title, r.tag ?? '', r.general ? 'General & admin' : `${r.project_code} ${r.project_name}`, r.milestone_label ?? '', name(r.owner_id), (r.assignee_ids ?? []).map((x) => name(x)).join('; '), r.backup_id ? name(r.backup_id) : '', r.est_hours, r.logged_hours, r.start_on, r.due_on,
       COMPLEXITY[r.complexity].label, TASK_STATUS[r.status].label, TASK_STAGE[r.stage].label, r.progress, (r.depends_on ?? []).map((x) => x.wbs).join(' '), (r.blocking ?? []).map((x) => `${x.wbs} (${name(x.owner_id)})`).join(' '), r.comments,
       r.reviewer_id ? name(r.reviewer_id) : '', r.concerned_manager_id ? name(r.concerned_manager_id) : '', PRIORITY_P[r.priority ?? 'normal'].code, (r.labels ?? []).join(' '), r.billable ? 'Yes' : 'No',
       r.criteria_total ? `${r.criteria_done}/${r.criteria_total}` : '', r.owner_department ?? '',
@@ -133,9 +161,16 @@ export default function AllTasksPage() {
   }
 
   /* ---------- cells ---------- */
+  const coLine = (r: AllTaskRow) =>
+    r.assignee_ids?.length ? (
+      <div className="mt-0.5 truncate text-[12px] text-ink-2" title={`Co-assignees: ${r.assignee_ids.map((x) => name(x)).join(', ')}`}>
+        with {r.assignee_ids.map((x) => first(x)).join(', ')}
+      </div>
+    ) : null
   const ownerCell = (r: AllTaskRow, compact?: boolean) => (
     <div className="min-w-0">
       {compact ? <span className="text-[13px] font-medium text-ink">{name(r.owner_id)}</span> : <PersonName id={r.owner_id} size={22} />}
+      {coLine(r)}
       {r.covering ? (
         <div className="mt-0.5 text-[12px] font-medium text-warning-text">
           {r.covering.reason === 'leave' ? `Covering for ${first(r.owner_id)} (on leave ${weekdays(r.covering.days)})` : `Covering for ${first(r.owner_id)} (delegated)`}
@@ -232,7 +267,7 @@ export default function AllTasksPage() {
         </div>
       ),
     },
-    { key: 'owner', header: 'Owner / backup', sortValue: (r) => name(r.owner_id), cell: (r) => <div className="min-w-[130px] max-w-[170px]">{ownerCell(r)}</div> },
+    { key: 'owner', header: 'Owner · assignees · backup', sortValue: (r) => name(r.owner_id), cell: (r) => <div className="min-w-[130px] max-w-[170px]">{ownerCell(r)}</div> },
     { key: 'effort', header: 'Est. / actual', align: 'right', sortValue: (r) => r.est_hours, cell: effortCell },
     {
       key: 'due', header: 'Start · due', sortValue: (r) => r.due_on,
@@ -289,17 +324,18 @@ export default function AllTasksPage() {
           </>
         }
       />
+      {tabs}
       <Card className="mb-4" pad={false}>
         <div className="grid grid-cols-2 gap-2 p-3 md:grid-cols-4 xl:grid-cols-[minmax(0,1.3fr)_repeat(4,minmax(0,1fr))_auto] xl:items-end">
           <FilterField label="Search" className="col-span-2 md:col-span-4 xl:col-span-1">
             <SearchInput value={qText} onChange={setQText} placeholder="Task, WBS no, project or owner" />
           </FilterField>
-          <FilterField label="Person (owner)">
+          <FilterField label="Person (owner or assignee)">
             <Select
               aria-label="Person"
               value={personChip ? (me?.id ?? 'all') : person === 'all' ? 'all' : person}
               disabled={personChip}
-              title={personChip ? 'The chip picks the person: clear it to filter by owner' : undefined}
+              title={personChip ? 'The chip picks the person: clear it to filter by owner or assignee' : undefined}
               onChange={(e) => set({ person: e.target.value })}
               options={personOpts}
             />
@@ -358,7 +394,7 @@ export default function AllTasksPage() {
       <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2 text-[12.5px] text-ink-3">
         <span className="tnum">
           {res.isLoading ? 'Loading…' : `${rows.length} task${rows.length === 1 ? '' : 's'}`}
-          {d && !personChip ? ` · ${person === 'all' ? 'everyone' : person === me?.id ? 'owned by me' : `owned by ${name(person)}`}` : ''}
+          {d && !personChip ? ` · ${person === 'all' ? 'everyone' : person === me?.id ? 'owned by or assigned to me' : `owned by or assigned to ${name(person)}`}` : ''}
           {chip === 'covering' ? ' · covering for colleagues on leave this week' : chip === 'tagged' ? ' · tasks where someone @mentioned you' : ''}
         </span>
         <span className="hidden md:inline">A task can’t start while a task it depends on is open. Click a row for details; the speech bubble opens the thread.</span>

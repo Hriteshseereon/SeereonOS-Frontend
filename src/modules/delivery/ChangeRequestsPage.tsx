@@ -9,9 +9,10 @@ import { crApi, type ChangeRequestList, type ProjectListItem } from '@/api/proje
 import { useMut, useScopeKey } from '@/api/query'
 import { ApiError } from '@/api/http'
 import { CR_STATUS } from '@/domain/labels'
-import { fmtDate, todayISO } from '@/domain/calendar'
+import { fmtDate, fmtDateTime, todayISO } from '@/domain/calendar'
+import { crSendApi, useSentToMe } from '@/api/projectWizard'
 import { fmtMoney, fmtNum } from '@/domain/money'
-import { Button, Card, Checkbox, DataTable, Dialog, EmptyState, Field, FilterChips, Input, PageHeader, Select, StatCard, StatusBadge, useConfirm, useReadOnly, type Column } from '@/ui'
+import { Badge, Button, Card, CardHeader, Checkbox, DataTable, Dialog, EmptyState, ErrorState, Field, FilterChips, Input, PageHeader, Select, SkeletonRows, StatCard, StatusBadge, useCan, useConfirm, useReadOnly, type Column } from '@/ui'
 import { ChangesTab } from '@/modules/projects/tabs/ChangesTab'
 import { ModeSwitch, ProjectPickerCard, ProjectsGate, useDeliveryProjects, useProjectChoice, useViewMode, WithProject } from './shared'
 
@@ -26,12 +27,26 @@ interface Row {
 const isOpen = (cr: ChangeRequest) => cr.status === 'raised' || cr.status === 'estimated'
 
 export default function DeliveryChangeRequestsPage() {
+  const can = useCan()
+  const manages = can('change_requests.manage') || can('projects.view_all')
+  if (!manages)
+    return (
+      <div>
+        <PageHeader title="Change requests" subtitle="Change requests your project managers sent you to read or review." />
+        <SentToMe standalone />
+      </div>
+    )
+  return <ManagerView />
+}
+
+function ManagerView() {
   const { q, items } = useDeliveryProjects()
   const { mode, setMode } = useViewMode(true)
   const { id, choose } = useProjectChoice(items)
   return (
     <div>
       <PageHeader title="Change requests" subtitle="Client asks after signing, across your projects. Approving adds the value to the contract; tasks enter the WBS only after approval." />
+      <SentToMe />
       <ProjectsGate q={q} items={items}>
         <ModeSwitch mode={mode} onChange={setMode} />
         {mode === 'all' ? (
@@ -44,6 +59,47 @@ export default function DeliveryChangeRequestsPage() {
         )}
       </ProjectsGate>
     </div>
+  )
+}
+
+/** v9 item 7: change requests a project manager sent me (notification + e-mail link here). */
+function SentToMe({ standalone }: { standalone?: boolean }) {
+  const q = useSentToMe()
+  const nav = useNavigate()
+  const readOnly = useReadOnly()
+  const seen = useMut((id: string) => crSendApi.seen(id), { invalidate: [['change-requests']], success: 'Marked as read' })
+  if (q.isLoading) return standalone ? <Card><SkeletonRows rows={3} /></Card> : null
+  if (q.error) return standalone ? <Card><ErrorState error={q.error} onRetry={() => q.refetch()} /></Card> : null
+  const items = q.data?.items ?? []
+  if (!items.length) return standalone ? <Card><EmptyState title="Nothing sent to you" body="When a project manager sends you a change request, it shows here and in the project’s Changes tab." compact /></Card> : null
+  return (
+    <Card className="mb-4">
+      <CardHeader title="Sent to me" subtitle={q.data!.unseen ? `${q.data!.unseen} not read yet` : 'All read'} />
+      <ul className="divide-y divide-line">
+        {items.map((cr) => (
+          <li key={cr.id} className="flex flex-col gap-2 py-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <span className="tnum text-[13.5px] font-semibold text-brand-text">CR-{cr.number ?? '?'}</span>
+                <span className="min-w-0 text-[13.5px] font-medium text-ink">{cr.title}</span>
+                <StatusBadge map={STATUS_MAP} value={cr.status} size="sm" />
+                {!cr.my_seen_at && <Badge tone="info" size="sm">New</Badge>}
+              </div>
+              <p className="mt-0.5 text-[12.5px] text-ink-3">
+                <span className="tnum">{cr.project_code}</span> · {cr.project_name} · from {cr.sent_by_name} · {fmtDateTime(cr.my_sent_at)}
+                {cr.hours ? ` · ${fmtNum(cr.hours, 1)}h effort` : ''}{cr.impact_days ? ` · ${cr.impact_days} working days impact` : ''}
+              </p>
+              {cr.send_note && <p className="mt-0.5 text-[12.5px] text-ink-2">“{cr.send_note}”</p>}
+              {cr.description && <p className="mt-0.5 max-w-[90ch] text-[12.5px] text-ink-2">{cr.description}</p>}
+            </div>
+            <div className="flex shrink-0 flex-wrap gap-2">
+              {cr.can_open_project && <Button size="sm" onClick={() => nav(`/projects/${cr.project_id}/changes`)}>Open project</Button>}
+              {!cr.my_seen_at && <Button size="sm" variant="primary" disabled={readOnly} loading={seen.isPending && seen.variables === cr.id} onClick={() => seen.mutate(cr.id)}>Mark as read</Button>}
+            </div>
+          </li>
+        ))}
+      </ul>
+    </Card>
   )
 }
 

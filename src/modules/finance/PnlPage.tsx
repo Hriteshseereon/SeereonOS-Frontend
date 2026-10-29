@@ -196,11 +196,18 @@ function Runway({ d }: { d: PnlResult }) {
       <div className="mt-1 flex justify-between text-[11px] text-ink-3"><span>0</span><span>6</span><span>12</span><span>24 months</span></div>
       <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2.5 border-t border-line pt-3 text-[13px]">
         <div className="min-w-0"><dt className="text-[12px] text-ink-3">Cash balance</dt><dd className="tnum font-medium">{fmtMoney(c.balance)}</dd></div>
-        <div className="min-w-0"><dt className="text-[12px] text-ink-3">Opening cash</dt><dd className="tnum font-medium">{fmtMoney(c.opening)}</dd></div>
+        <div className="min-w-0"><dt className="text-[12px] text-ink-3">Opening cash{c.opening_source ? ` (${c.opening_source})` : ''}</dt><dd className="tnum font-medium">{fmtMoney(c.opening)}</dd></div>
+        {d.opening_balances && (
+          // v9 (A5): balances brought forward at the start of the FY (Admin › Opening balances)
+          <>
+            <div className="min-w-0"><dt className="text-[12px] text-ink-3">Receivables b/f {d.opening_balances.fy_label}</dt><dd className="tnum font-medium">{fmtMoney(d.opening_balances.receivables)}</dd></div>
+            <div className="min-w-0"><dt className="text-[12px] text-ink-3">Payables b/f {d.opening_balances.fy_label}</dt><dd className="tnum font-medium">{fmtMoney(d.opening_balances.payables)}</dd></div>
+          </>
+        )}
         <div className="min-w-0"><dt className="text-[12px] text-ink-3">Monthly burn</dt><dd className="tnum font-medium">{fmtMoney(c.monthly_burn)}</dd></div>
         <div className="min-w-0"><dt className="text-[12px] text-ink-3">Cash in / month</dt><dd className="tnum font-medium">{fmtMoney(c.recurring_income)}</dd></div>
       </dl>
-      {c.balance < 0 && <Callout tone="danger" className="mt-3">The computed cash balance is negative. Check the opening cash in Settings → Company → Finance.</Callout>}
+      {c.balance < 0 && <Callout tone="danger" className="mt-3">The computed cash balance is negative. Check the opening cash in Admin › Opening balances (or Settings → Company → Finance).</Callout>}
     </Card>
   )
 }

@@ -74,6 +74,9 @@ re-pointed by an environment variable on the web server).
      so a new release is picked up immediately.
    - HTTPS. Set the backend's `APP_URL` to this public URL (links in emails point here) and add the origin to
      `CORS_ORIGINS`.
+   - **Vercel** (current hosting): `vercel.json` in this folder adds the SPA fallback. In the Vercel project set
+     `VITE_API_BASE_URL` (Settings → Environment Variables, Production) and redeploy after changing it; build command
+     `npm run build`, output directory `dist`.
 2. **The Docker image in this folder** (nginx, non-root, port 8080, SPA fallback, caching and security headers):
 
    ```sh

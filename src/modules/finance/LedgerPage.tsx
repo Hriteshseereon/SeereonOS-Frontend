@@ -1,5 +1,6 @@
 // UI-31 Ledger: income & expense entries with filters, recurring expansion, totals, add/edit/delete, export.
 import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Download, Lock, MoreHorizontal, Pencil, Plus, Repeat, Trash2 } from '@/ui/icons'
 import {
   Badge, Button, Card, Combobox, DataTable, Dialog, EmptyState, ErrorState, Field, IconButton, Input, Menu, Money, MoneyInput, PageHeader, SearchInput, Segmented, Select, SkeletonRows, StatCard, Switch, Callout, useCan, useConfirm, useReadOnly, SkeletonCards, type Column,
@@ -14,6 +15,7 @@ import { storage } from '@/lib/storage'
 import { fmtMoney } from '@/domain/money'
 import { cn } from '@/lib/utils'
 import type { ApiError } from '@/api/http'
+import type { OpeningWithCash } from '@/api/types/finance'
 import type { LedgerKind, RevenueStream } from '@/types/entities'
 
 type Preset = 'this_month' | 'last_month' | 'this_q' | 'last_3' | 'fy' | 'last_12' | 'custom'
@@ -205,6 +207,7 @@ export default function LedgerPage() {
             <StatCard label="Entries" value={d.totals.count} sub={anyFilter ? 'Matching filters' : 'In this range'} />
           </div>
         ) : null}
+        {d?.opening && <OpeningStrip o={d.opening} />}
       </div>
 
       {/* Filters */}
@@ -325,6 +328,7 @@ function EntriesView({ canEdit, onAdd, onEdit }: { canEdit: boolean; onAdd: () =
   }
   return (
     <div className="space-y-4">
+      {d?.opening && scope === 'fy' && <OpeningStrip o={d.opening} />}
       <Card pad={false} className="overflow-hidden">
         <div className="flex flex-col gap-2 px-4 pb-3 pt-4 sm:flex-row sm:items-center sm:justify-between md:px-5">
           <div className="min-w-0">
@@ -487,5 +491,21 @@ function EntryDialog({ open, kind, entry, onClose, categories }: { open: boolean
         )}
       </div>
     </Dialog>
+  )
+}
+
+/** v9 (A5): the FY's opening balances (Admin › Opening balances) and the cash they lead to. */
+function OpeningStrip({ o }: { o: OpeningWithCash }) {
+  return (
+    <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 rounded-lg border border-line bg-surface px-4 py-3 text-[13px] md:grid-cols-5">
+      <div className="col-span-2 min-w-0 md:col-span-1">
+        <div className="text-[12px] text-ink-3">Opening balances</div>
+        <Link to="/setup/opening-balances" className="font-medium text-brand-text hover:underline">{o.fy_label} · {fmtDate(o.as_of)}</Link>
+      </div>
+      <div className="min-w-0"><div className="text-[12px] text-ink-3">Cash & bank b/f</div><div className="tnum font-medium">{fmtMoney(o.cash_bank)}</div></div>
+      <div className="min-w-0"><div className="text-[12px] text-ink-3">Receivables b/f</div><div className="tnum font-medium">{fmtMoney(o.receivables)}</div></div>
+      <div className="min-w-0"><div className="text-[12px] text-ink-3">Payables b/f</div><div className="tnum font-medium">{fmtMoney(o.payables)}</div></div>
+      <div className="min-w-0"><div className="text-[12px] text-ink-3">Cash on {fmtDate(o.closing_on)}</div><div className="tnum font-medium">{fmtMoney(o.closing_cash)}</div></div>
+    </div>
   )
 }

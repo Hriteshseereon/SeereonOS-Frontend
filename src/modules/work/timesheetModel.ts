@@ -1,6 +1,6 @@
 // Client-side draft model for the week grid. Totals here are display hints only; the server re-validates everything.
 import type { RowInput, WeekRow, WeekView, WorkItem } from '@/api/work'
-import { INTERNAL_CODES, LEAVE_TYPE } from '@/domain/labels'
+import { INTERNAL_CODES, LEAVE_TYPE, PROJECT_WORK } from '@/domain/labels'
 import type { LeaveType } from '@/types/entities'
 
 export interface DraftRow extends RowInput {
@@ -51,13 +51,26 @@ export function fromItem(it: WorkItem, extra: { project_id?: string | null; note
     hours: { ...(extra.hours ?? {}) },
     project_id: it.kind === 'internal' ? extra.project_id ?? null : null,
     label,
-    sublabel: it.kind === 'task' ? it.hint : it.kind === 'leave' ? 'Leave' : 'Activity',
+    sublabel: it.kind === 'task' ? it.hint : it.kind === 'leave' ? 'Leave' : it.internal_code === PROJECT_WORK ? 'Project work' : 'Activity',
     wbs: it.wbs,
     project_code: it.project_code,
     est_hours: null,
     logged_hours: null,
     locked_reason: null,
   }
+}
+
+/** v9 (D5): a row of time on a project without a task (the project and a description are required). */
+export const isProjectWork = (r: { kind: string; internal_code: string | null }) => r.kind === 'internal' && r.internal_code === PROJECT_WORK
+
+/** Client-side check before saving (the server re-validates): project work needs its project and a description. */
+export function draftProblem(rows: DraftRow[]): string | null {
+  for (const r of rows) {
+    if (!isProjectWork(r) || rowTotal(r) <= 0) continue
+    if (!r.project_id) return 'Choose the project for each “Project work (no task)” row.'
+    if (r.note.trim().length < 3) return 'Describe the project work in each “Project work (no task)” row.'
+  }
+  return null
 }
 
 export function toInput(rows: DraftRow[]): RowInput[] {

@@ -37,7 +37,9 @@ export const CANDIDATE_STAGE: Record<CandidateStage, { label: string; tone: Tone
   rejected: { label: 'Rejected', tone: 'danger' },
   withdrawn: { label: 'Withdrawn', tone: 'neutral' },
 }
-export const SOURCE: Record<string, string> = { referral: 'Referral', job_portal: 'Job portal', linkedin: 'LinkedIn', campus: 'Campus', agency: 'Agency', website: 'Website', other: 'Other' }
+export const SOURCE: Record<string, string> = { referral: 'Referral', job_portal: 'Job portal', linkedin: 'LinkedIn', campus: 'Campus', agency: 'Agency', website: 'Website', careers: 'Careers link', other: 'Other' }
+/** sources a person can pick when adding a candidate by hand (Careers link = applied through the public job page) */
+export const MANUAL_SOURCES = Object.entries(SOURCE).filter(([k]) => k !== 'careers')
 export const ASSET_STATUS: Record<Asset['status'], { label: string; tone: Tone }> = {
   in_stock: { label: 'In stock', tone: 'info' },
   assigned: { label: 'Assigned', tone: 'success' },

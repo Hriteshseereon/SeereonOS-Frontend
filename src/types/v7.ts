@@ -14,10 +14,10 @@ export interface CostEstimate extends Base {
   end_on: ISODate
   type: string
   billing_model: string
-  milestones: { key: string; name: string; billing_amount_paise: Paise; start_on: ISODate | null; end_on: ISODate | null }[]
+  milestones: { key: string; name: string; billing_amount_paise: Paise; start_on: ISODate | null; end_on: ISODate | null; billing_pct?: number }[]
   /** user_id = a named person (CTC from cost rates); otherwise role_label + an assumed monthly CTC (not hired yet).
    *  from_on / to_on null = follow the milestone's dates. */
-  resources: { id: string; user_id: ID | null; role_label: string | null; monthly_ctc_paise: Paise | null; milestone_key: string; pct: number; from_on: ISODate | null; to_on: ISODate | null }[]
+  resources: { id: string; user_id: ID | null; role_label: string | null; monthly_ctc_paise: Paise | null; milestone_key: string | null; pct: number; from_on: ISODate | null; to_on: ISODate | null }[]
   additional_costs: { id: string; category: string; description: string; amount_paise: Paise }[]
   maintenance_paise: Paise
   contingency_pct: number

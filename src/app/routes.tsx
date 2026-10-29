@@ -8,7 +8,7 @@ import { useApi } from '@/api/query'
 import AppShell, { PageLoading } from './AppShell'
 import { useCan } from '@/ui'
 import type { Action } from '@/domain/permissions'
-import { CHANGE_NAV_ACTIONS, DELIVERY_GATES, SETUP_NAV_ACTIONS } from './nav'
+import { CHANGE_NAV_ACTIONS, DELIVERY_GATES, SETUP_HUB_ACTIONS, SETUP_NAV_ACTIONS } from './nav'
 import { ErrorState } from '@/ui'
 
 const L = <T,>(f: () => Promise<{ default: T }>) => lazy(f as never)
@@ -47,6 +47,10 @@ const RolesPage = L(() => import('@/modules/setup/RolesPage'))
 const RoleDetailPage = L(() => import('@/modules/setup/RoleDetailPage'))
 const WorkflowsPage = L(() => import('@/modules/setup/WorkflowsPage'))
 const MakerCheckerPage = L(() => import('@/modules/setup/MakerCheckerPage'))
+// v9 (A5) — admin settings: leave types & policies, holiday calendars, opening balances
+const LeaveTypesPage = L(() => import('@/modules/setup/LeaveTypesPage'))
+const OpeningBalancesPage = L(() => import('@/modules/setup/OpeningBalancesPage'))
+const SetupHolidaysPage = L(() => import('@/modules/admin/HolidaysPage').then((m) => ({ default: m.SetupHolidaysPage })))
 const CreateEmployeePage = L(() => import('@/modules/admin/CreateEmployeePage'))
 const FirstPasswordPage = L(() => import('@/modules/auth/FirstPasswordPage'))
 const ChangesPage = L(() => import('@/modules/company/ChangesPage'))
@@ -54,7 +58,7 @@ const ChangesPage = L(() => import('@/modules/company/ChangesPage'))
 const ProjectsPage = L(() => import('@/modules/projects/ProjectsPage'))
 const ProjectPage = L(() => import('@/modules/projects/ProjectPage'))
 const WbsImportPage = L(() => import('@/modules/projects/WbsImportPage'))
-const OpeningsPage = L(() => import('@/modules/projects/OpeningsPage'))
+const OpeningsPage = L(() => import('@/modules/hr/OpeningsPage'))
 const ClientViewPage = L(() => import('@/modules/projects/ClientViewPage'))
 // v7
 const EstimatesPage = L(() => import('@/modules/estimates/EstimatesPage'))
@@ -93,6 +97,10 @@ const MyTasksPage = L(() => import('@/modules/work/MyTasksPage'))
 const TimesheetPage = L(() => import('@/modules/work/TimesheetPage'))
 const ApprovalsPage = L(() => import('@/modules/work/ApprovalsPage'))
 const TeamPage = L(() => import('@/modules/work/TeamPage'))
+// v9 (A3) — People › Team overview, teams master, public careers page
+const TeamOverviewPage = L(() => import('@/modules/hr/TeamOverviewPage'))
+const TeamsSetupPage = L(() => import('@/modules/hr/TeamsSetupPage'))
+const CareersPage = L(() => import('@/modules/careers/CareersPage'))
 const DailyUpdatePage = L(() => import('@/modules/work/DailyUpdatePage'))
 const PayrollPage = L(() => import('@/modules/work/PayrollPage'))
 const NotificationsPage = L(() => import('@/modules/work/NotificationsPage'))
@@ -114,6 +122,7 @@ const ReportsPage = L(() => import('@/modules/reports/ReportsPage'))
 const ReportBuilderPage = L(() => import('@/modules/reports/ReportBuilderPage'))
 const ReportViewPage = L(() => import('@/modules/reports/ReportViewPage'))
 const AIStudioPage = L(() => import('@/modules/reports/AIStudioPage'))
+const ReportTypePage = L(() => import('@/modules/reports/ReportTypePage')) // v9 (D9) report types
 // v3 business processes
 const InboxPage = L(() => import('@/modules/company/InboxPage'))
 const OkrPage = L(() => import('@/modules/company/OkrPage'))
@@ -220,6 +229,7 @@ const routes = [
         ),
         children: [
           { path: '/invite/:token', element: <InvitePage /> },
+          { path: '/careers/:token', element: <CareersPage /> },
           { path: '/privacy', element: <LegalPage /> },
           { path: '/terms', element: <LegalPage /> },
         ],
@@ -263,7 +273,7 @@ const routes = [
           { path: '/delivery/milestones', element: <GateAny actions={DELIVERY_GATES.milestones}><DeliveryMilestonesPage /></GateAny> },
           { path: '/delivery/wbs', element: <DeliveryWbsPage /> },
           { path: '/delivery/schedule', element: <DeliverySchedulePage /> },
-          { path: '/delivery/change-requests', element: <GateAny actions={DELIVERY_GATES.change_requests}><DeliveryChangeRequestsPage /></GateAny> },
+          { path: '/delivery/change-requests', element: <DeliveryChangeRequestsPage /> }, // v9: everyone (managers: all CRs; others: the ones sent to them)
           { path: '/delivery/allocation', element: <GateAny actions={DELIVERY_GATES.allocation}><DeliveryAllocationPage /></GateAny> },
           { path: '/delivery/costing', element: <Gate action={DELIVERY_GATES.costing}><DeliveryCostingPage /></Gate> },
           { path: '/delivery/documents', element: <DeliveryDocumentsPage /> },
@@ -273,7 +283,8 @@ const routes = [
           { path: '/projects/:id/:tab', element: <ProjectPage /> },
           { path: '/projects/:id/import', element: <Gate action="projects.edit"><WbsImportPage /></Gate> },
           { path: '/projects/:id/client-view', element: <ClientViewPage /> },
-          { path: '/team', element: <Gate action="team.view"><TeamPage /></Gate> },
+          { path: '/team', element: <GateAny actions={['team.view', 'people.view_all']}><TeamOverviewPage /></GateAny> },
+          { path: '/team/timesheets', element: <Gate action="team.view"><TeamPage /></Gate> },
           { path: '/openings', element: <Gate action="openings.manage"><OpeningsPage /></Gate> },
           { path: '/scorecard', element: <Gate action="insights.view"><ScorecardPage /></Gate> },
           { path: '/sales', element: <Gate action="deals.edit_own"><PipelinePage /></Gate> },
@@ -290,6 +301,8 @@ const routes = [
           { path: '/insights/:view', element: <Gate action="insights.view"><InsightsPage /></Gate> },
           { path: '/reports', element: <Gate action="reports.view"><ReportsPage /></Gate> },
           { path: '/reports/new', element: <Gate action="reports.build"><ReportBuilderPage /></Gate> },
+          { path: '/reports/types/:type', element: <Gate action="reports.view"><ReportTypePage mode="builder" /></Gate> },
+          { path: '/reports/types/:type/result', element: <Gate action="reports.view"><ReportTypePage mode="result" /></Gate> },
           { path: '/reports/:id/edit', element: <Gate action="reports.build"><ReportBuilderPage /></Gate> },
           { path: '/reports/:id', element: <Gate action="reports.view"><ReportViewPage /></Gate> },
           { path: '/inbox', element: <InboxPage /> },
@@ -319,7 +332,7 @@ const routes = [
             path: '/setup',
             element: <GateAny actions={SETUP_NAV_ACTIONS}><SetupLayout /></GateAny>,
             children: [
-              { index: true, element: <Gate action="master.view"><SetupOverviewPage /></Gate> },
+              { index: true, element: <GateAny actions={SETUP_HUB_ACTIONS}><SetupOverviewPage /></GateAny> },
               { path: 'org', element: <Gate action="master.view"><OrgProfilePage /></Gate> },
               { path: 'locations', element: <Gate action="master.view"><LocationsPage /></Gate> },
               { path: 'departments', element: <Gate action="master.view"><DepartmentsPage /></Gate> },
@@ -327,11 +340,15 @@ const routes = [
               { path: 'grades', element: <Gate action="master.view"><GradesPage /></Gate> },
               { path: 'cost-centres', element: <Gate action="master.view"><CostCentresPage /></Gate> },
               { path: 'shifts', element: <Gate action="master.view"><ShiftsPage /></Gate> },
+              { path: 'teams', element: <Gate action="master.view"><TeamsSetupPage /></Gate> },
               { path: 'emails', element: <Gate action="emails.view"><EmailsPage /></Gate> },
               { path: 'roles', element: <Gate action="roles.view"><RolesPage /></Gate> },
               { path: 'roles/:key', element: <Gate action="roles.view"><RoleDetailPage /></Gate> },
               { path: 'workflows', element: <Gate action="workflows.manage"><WorkflowsPage /></Gate> },
               { path: 'maker-checker', element: <Gate action="makerchecker.configure"><MakerCheckerPage /></Gate> },
+              { path: 'leave-types', element: <GateAny actions={['people.manage', 'people.view_all', 'master.view']}><LeaveTypesPage /></GateAny> },
+              { path: 'holidays', element: <SetupHolidaysPage /> },
+              { path: 'opening-balances', element: <Gate action="finance.view"><OpeningBalancesPage /></Gate> },
             ],
           },
           { path: '/billing', element: <Gate action="billing.manage"><BillingPage /></Gate> },

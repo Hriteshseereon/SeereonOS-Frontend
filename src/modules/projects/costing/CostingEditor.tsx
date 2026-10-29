@@ -1,16 +1,16 @@
 // PROJECT COST CALCULATOR (Feature Guide §3 / §6, checklist G3.10, G6.09). Shared by the create form and the
 // project's Money tab. Every number comes from the server preview; this component only edits the draft.
-import type { ReactNode } from 'react'
 import { AlertTriangle, Plus, X } from '@/ui/icons'
 import type { CostingPreview } from '@/api/projects'
 import { useDirectory } from '@/api/core'
-import { ADDITIONAL_COST_CATEGORIES } from '@/domain/costing'
 import { fmtDate } from '@/domain/calendar'
 import { fmtMoney, fmtNum, fmtPct } from '@/domain/money'
 import { cn } from '@/lib/utils'
-import { Button, Callout, IconButton, Input, MoneyInput, Select } from '@/ui'
+import { Button, Callout, IconButton, Input, Select } from '@/ui'
 import { newKey, type CostingDraft, type DraftRow } from './costingDraft'
 import { CostChain } from './CostChain'
+import { CommercialsEditor } from './CommercialsEditor'
+import { PeopleShare } from './PeopleShare'
 
 export function CalendarLine({ preview, empty, manDays, className }: { preview: { summary: CostingPreview['summary'] } | null | undefined; empty?: string; manDays?: { total: number; rows: number } | null; className?: string }) {
   const s = preview?.summary
@@ -40,7 +40,7 @@ const HEAD = 'text-[11px] font-semibold uppercase tracking-[0.04em] text-ink-3'
 const LBL = 'mb-1 block text-[12px] font-medium text-ink-3 @min-[960px]:hidden'
 
 export function CostingEditor({
-  draft, onChange, preview, errors = {}, readOnly, loading, hideResources, hideTotals,
+  draft, onChange, preview, errors = {}, readOnly, loading, hideResources, hideTotals, hideCommercials, allowAll, showShare,
 }: {
   draft: CostingDraft
   onChange: (d: CostingDraft) => void
@@ -52,13 +52,19 @@ export function CostingEditor({
   hideResources?: boolean
   /** v7: the caller shows the totals elsewhere (e.g. a side panel) */
   hideTotals?: boolean
+  /** v9 wizard: resources on their own step (commercials on the next) */
+  hideCommercials?: boolean
+  /** v9: offer "All milestones" (rows span the project) — the wizard and projects without a WBS yet */
+  allowAll?: boolean
+  /** v9: per-person % share and the cost each person adds */
+  showShare?: boolean
 }) {
   const dir = useDirectory()
   const people = (dir.data ?? []).filter((p) => p.status === 'active')
   const seeRates = !!preview?.can_see_rates
   const ms = preview?.milestones ?? []
   // Feature Guide §6: the milestone is required (no "All"), so cost always lands on a milestone and a period
-  const msOptions = ms.map((m) => ({ value: m.id ? `id:${m.id}` : `i:${m.index}`, label: m.code }))
+  const msOptions = [...(allowAll ? [{ value: '', label: 'All milestones' }] : []), ...ms.map((m) => ({ value: m.id ? `id:${m.id}` : `i:${m.index}`, label: m.code }))]
   const rowView = (i: number) => preview?.rows[i]
   const setRow = (key: string, patch: Partial<DraftRow>) => onChange({ ...draft, rows: draft.rows.map((r) => (r.key === key ? { ...r, ...patch } : r)) })
   const t = preview?.totals
@@ -68,7 +74,7 @@ export function CostingEditor({
 
   const addRow = () => {
     const first = ms[0]
-    onChange({ ...draft, rows: [...draft.rows, { key: newKey('r'), id: null, user_id: null, ms: first ? (first.id ? `id:${first.id}` : `i:${first.index}`) : '', pct: '100', from_on: null, to_on: null }] })
+    onChange({ ...draft, rows: [...draft.rows, { key: newKey('r'), id: null, user_id: null, ms: first && !allowAll ? (first.id ? `id:${first.id}` : `i:${first.index}`) : '', pct: '100', from_on: null, to_on: null }] })
   }
 
   return (
@@ -87,7 +93,7 @@ export function CostingEditor({
         {draft.rows.length > 0 && (
           <div className={cn('hidden gap-2 border-b border-line pb-2 @min-[960px]:grid', grid)}>
             <span className={HEAD}>Resource</span>
-            <span className={HEAD}>Milestone *</span>
+            <span className={HEAD}>{allowAll ? 'Milestone' : 'Milestone *'}</span>
             <span className={HEAD}>Alloc. %</span>
             <span className={HEAD}>From *</span>
             <span className={HEAD}>To *</span>
@@ -115,14 +121,14 @@ export function CostingEditor({
                       value={r.user_id ?? ''}
                       disabled={readOnly}
                       invalid={!!err('user_id')}
-                      placeholder="Choose"
+                      placeholder={!r.user_id && r.role_label ? `Role: ${r.role_label} — assign a person` : 'Choose'}
                       onChange={(e) => setRow(r.key, { user_id: e.target.value || null })}
                       options={people.map((p) => ({ value: p.id, label: p.name }))}
                     />
                   </label>
                   <label className="min-w-0">
-                    <span className={LBL}>Milestone *</span>
-                    <Select aria-label={`Row ${i + 1} milestone`} value={r.ms} disabled={readOnly} invalid={!!err('milestone_id') || (!r.ms && !!r.user_id)} placeholder="—" onChange={(e) => setRow(r.key, { ms: e.target.value, from_on: null, to_on: null })} options={msOptions} />
+                    <span className={LBL}>{allowAll ? 'Milestone' : 'Milestone *'}</span>
+                    <Select aria-label={`Row ${i + 1} milestone`} value={r.ms} disabled={readOnly} invalid={!!err('milestone_id') || (!allowAll && !r.ms && !!r.user_id)} placeholder={allowAll ? undefined : '—'} onChange={(e) => setRow(r.key, { ms: e.target.value, from_on: null, to_on: null })} options={msOptions} />
                   </label>
                   <label className="min-w-0">
                     <span className={LBL}>Alloc. %</span>
@@ -154,77 +160,25 @@ export function CostingEditor({
           })}
         </ul>
         <p className="mt-2 text-[12.5px] leading-relaxed text-ink-3">
-          Choose the milestone each person works on (required); From and To are required and default to that milestone’s dates. Add the same person again for another milestone. Cost runs across every working day in the range, whether or not hours are logged.
+          {allowAll
+            ? 'Choose a milestone, or All milestones to span the project; From and To default to those dates. Add the same person again for another milestone or period. Cost runs across every working day in the range, whether or not hours are logged.'
+            : 'Choose the milestone each person works on (required); From and To are required and default to that milestone’s dates. Add the same person again for another milestone. Cost runs across every working day in the range, whether or not hours are logged.'}
         </p>
         {!readOnly && (
           <Button size="sm" className="mt-2" icon={<Plus className="size-4" />} onClick={addRow}>
             Add resource
           </Button>
         )}
+        {showShare && t?.people_share && t.people_share.length > 0 && <PeopleShare className="mt-4" people={t.people_share} resources={t.resources} loading={loading} />}
       </section>}
 
-      {/* ---------------- additional costs ---------------- */}
-      <section>
-        <h4 className="mb-2 text-[14px] font-semibold">Additional costs</h4>
-        {draft.additional.length > 0 && (
-          <div className="hidden gap-2 border-b border-line pb-2 @min-[640px]:grid @min-[640px]:grid-cols-[200px_minmax(0,1fr)_160px_36px]">
-            <span className={HEAD}>Category</span>
-            <span className={HEAD}>Description</span>
-            <span className={HEAD}>Amount (₹)</span>
-            <span />
-          </div>
-        )}
-        <ul className="divide-y divide-line">
-          {draft.additional.map((a, i) => (
-            <li key={a.key} className="grid grid-cols-[minmax(0,1fr)_36px] items-center gap-2 py-2 @min-[640px]:grid-cols-[200px_minmax(0,1fr)_160px_36px]">
-              <Select aria-label={`Cost ${i + 1} category`} value={a.category} disabled={readOnly} onChange={(e) => onChange({ ...draft, additional: draft.additional.map((x) => (x.key === a.key ? { ...x, category: e.target.value } : x)) })} options={ADDITIONAL_COST_CATEGORIES} />
-              <div className="row-span-1 flex justify-end @min-[640px]:order-last">
-                {!readOnly && (
-                  <IconButton label={`Remove cost ${i + 1}`} size="sm" onClick={() => onChange({ ...draft, additional: draft.additional.filter((x) => x.key !== a.key) })}>
-                    <X className="size-4" />
-                  </IconButton>
-                )}
-              </div>
-              <Input aria-label={`Cost ${i + 1} description`} className="col-span-2 @min-[640px]:col-span-1" value={a.description} disabled={readOnly} invalid={!!errors[`additional_costs.${i}.description`]} placeholder="e.g. Play Store developer account" onChange={(e) => onChange({ ...draft, additional: draft.additional.map((x) => (x.key === a.key ? { ...x, description: e.target.value } : x)) })} />
-              <MoneyInput className="col-span-2 @min-[640px]:col-span-1" value={a.amount_paise} disabled={readOnly} invalid={!!errors[`additional_costs.${i}.amount_paise`]} onChange={(v) => onChange({ ...draft, additional: draft.additional.map((x) => (x.key === a.key ? { ...x, amount_paise: v } : x)) })} />
-              {(errors[`additional_costs.${i}.description`] || errors[`additional_costs.${i}.amount_paise`]) && <p className="col-span-full text-[12.5px] font-medium text-danger-text">{errors[`additional_costs.${i}.description`] || errors[`additional_costs.${i}.amount_paise`]}</p>}
-            </li>
-          ))}
-        </ul>
-        {!readOnly && (
-          <Button size="sm" className="mt-2" icon={<Plus className="size-4" />} onClick={() => onChange({ ...draft, additional: [...draft.additional, { key: newKey('a'), category: 'software', description: '', amount_paise: 0 }] })}>
-            Add cost
-          </Button>
-        )}
-      </section>
-
-      {/* ---------------- maintenance, contingency, markup ⇄ price ---------------- */}
-      <section className="grid gap-4 @min-[560px]:grid-cols-2">
-        <Labeled label="Maintenance / support cost (₹)" error={errors['costing.maintenance_paise']}>
-          <MoneyInput value={draft.maintenance_paise} disabled={readOnly} onChange={(v) => onChange({ ...draft, maintenance_paise: v })} />
-        </Labeled>
-        <Labeled label="Contingency (% of total cost)" error={errors['costing.contingency_pct']}>
-          <Input type="number" inputMode="decimal" min={0} max={100} step={1} suffix="%" value={draft.contingency_pct} disabled={readOnly} onChange={(e) => onChange({ ...draft, contingency_pct: e.target.value })} />
-        </Labeled>
-        <Labeled label="Markup (%)" hint={draft.price_mode === 'price' ? 'Worked out from the price.' : 'Price = actual cost × (1 + markup).'} error={errors['costing.markup_pct']}>
-          <Input
-            type="number"
-            inputMode="decimal"
-            step={1}
-            suffix="%"
-            disabled={readOnly}
-            value={draft.price_mode === 'price' ? (preview?.markup_pct !== null && preview?.markup_pct !== undefined ? String(preview.markup_pct) : draft.markup_pct) : draft.markup_pct}
-            onChange={(e) => onChange({ ...draft, markup_pct: e.target.value, price_mode: 'markup' })}
-          />
-        </Labeled>
-        <Labeled label="Project price (₹)" hint={draft.price_mode === 'markup' ? 'Worked out from the markup. Type a price to set it directly.' : 'Markup is worked out from this price.'} error={errors['costing.price_paise']}>
-          <MoneyInput
-            disabled={readOnly}
-            value={draft.price_mode === 'markup' ? preview?.price_paise ?? null : draft.price_paise}
-            onChange={(v) => onChange({ ...draft, price_paise: v, price_mode: 'price' })}
-          />
-        </Labeled>
-      </section>
+      {/* ---------------- commercials (v9 D1): category lines, maintenance, contingency, profit margin ⇄ price ---------------- */}
+      {!hideCommercials && (
+        <section>
+          <h4 className="mb-2 text-[14px] font-semibold">Commercials</h4>
+          <CommercialsEditor draft={draft} onChange={onChange} preview={preview} errors={errors} readOnly={readOnly} />
+        </section>
+      )}
 
       {/* ---------------- totals ---------------- */}
       {!hideTotals && t && t.total_cost !== null && (
@@ -232,12 +186,12 @@ export function CostingEditor({
           <CostChain t={t} contingencyPct={preview?.contingency_pct} markupPct={preview?.markup_pct} belowFloor={preview?.below_floor} />
           {preview?.below_floor && (
             <Callout tone="danger" icon={<AlertTriangle />} className="mt-3">
-              Planned margin {fmtPct(t.margin)} is below the {preview.floor_pct}% floor. Raise the price or markup, or trim resources.
+              Planned margin {fmtPct(t.margin)} is below the {preview.floor_pct}% floor. Raise the price or profit margin, or trim resources.
             </Callout>
           )}
           {seeRates && (
             <p className="mt-3 text-[12px] leading-relaxed text-ink-3">
-              Cost per hour = monthly CTC ÷ (working days in the month × {preview?.min_hours ?? 9} minimum hours); cost/day = {preview?.min_hours ?? 9} × cost per hour. A row costs working days × % × cost/day, month by month. Total cost = people + additional costs + maintenance; actual cost = total cost + contingency; price = actual cost + markup. Margin = profit ÷ price; markup = profit ÷ actual cost.
+              Cost per hour = monthly CTC ÷ (working days in the month × {preview?.min_hours ?? 9} minimum hours); cost/day = {preview?.min_hours ?? 9} × cost per hour. A row costs working days × % × cost/day, month by month. Total cost = resource cost + office & hardware + expenses + miscellaneous (+ maintenance); actual cost = total cost + contingency; price = actual cost × (1 + profit margin). Margin on cost = profit ÷ actual cost; margin on price = profit ÷ price.
             </p>
           )}
         </section>
@@ -258,15 +212,6 @@ function Num({ label, value, strong }: { label: string; value: string; strong?: 
     <div className="min-w-0 @min-[960px]:text-right">
       <span className={LBL}>{label}</span>
       <span className={cn('tnum block whitespace-nowrap text-[13px]', strong ? 'font-medium text-ink' : 'text-ink-2')}>{value}</span>
-    </div>
-  )
-}
-function Labeled({ label, hint, error, children }: { label: string; hint?: string; error?: string; children: ReactNode }) {
-  return (
-    <div className="flex min-w-0 flex-col gap-1.5">
-      <span className="text-[13px] font-medium text-ink-2">{label}</span>
-      {children}
-      {error ? <p className="text-[12.5px] font-medium text-danger-text">{error}</p> : hint ? <p className="text-[12.5px] text-ink-3">{hint}</p> : null}
     </div>
   )
 }

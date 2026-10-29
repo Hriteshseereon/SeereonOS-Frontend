@@ -24,6 +24,15 @@ export interface LeaveRequestView extends LeaveRequest {
   can_approve: boolean
   can_cancel: boolean
   via_delegation: boolean
+  /** v9: present when the request has documents — may this viewer open them (applicant, approvers, HR) */
+  can_open_docs?: boolean
+}
+/** v9: a document picked in the browser, sent as a data: URL (PDF, PNG, JPG or DOCX, ≤ 5 MB) */
+export interface LeaveFileInput {
+  name: string
+  size_bytes: number
+  mime: string
+  data_url: string
 }
 export interface LeaveRequestsView {
   mine: LeaveRequestView[]
@@ -41,6 +50,8 @@ export interface LeaveInput {
   type: LeaveType
   portion: 'full' | 'half'
   reason: string
+  /** v9: optional supporting documents (up to 3) */
+  attachments?: LeaveFileInput[]
 }
 
 /* ---------------- Performance ---------------- */
@@ -295,6 +306,10 @@ export const hrApi = {
   approveLeave: (id: string) => requestFull<LeaveRequest>('POST', `/leave-requests/${id}/approve`, {}),
   rejectLeave: (id: string, reason: string) => requestFull<LeaveRequest>('POST', `/leave-requests/${id}/reject`, { body: { reason } }),
   cancelLeave: (id: string) => requestFull<LeaveRequest>('POST', `/leave-requests/${id}/cancel`, {}),
+  /** v9: leave documents — add (applicant), remove while pending (applicant), open (applicant, approvers, HR) */
+  addLeaveDoc: (id: string, f: LeaveFileInput) => requestFull<LeaveRequest>('POST', `/leave-requests/${id}/attachments`, { body: f }),
+  removeLeaveDoc: (id: string, aid: string) => requestFull<LeaveRequest>('DELETE', `/leave-requests/${id}/attachments/${aid}`, {}),
+  leaveDoc: (id: string, aid: string) => http.get<{ file_name: string; mime: string; size_bytes: number; data_url: string }>(`/leave-requests/${id}/attachments/${aid}`),
   savePolicy: (type: LeaveType, b: Pick<LeavePolicy, 'annual_days' | 'carry_forward_max' | 'accrual'>, version?: number) => requestFull<LeavePolicy>('PUT', `/leave-policies/${type}`, { body: b, ifMatch: version }),
   // performance
   performance: (userId: string | undefined, from: string, to: string) => http.get<PerformanceProfile>(userId ? `/performance/${userId}` : '/performance/me', q({ from, to })),

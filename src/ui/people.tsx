@@ -1,10 +1,11 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useId, useMemo, useState, type ReactNode } from 'react'
 import { Command } from 'cmdk'
 import { Check, ChevronDown, X } from '@/ui/icons'
 import { usePeopleMap, type DirectoryPerson } from '@/api/core'
 import { cn } from '@/lib/utils'
 import { Avatar } from './data'
 import { Popover } from './overlay'
+import { useFieldAria } from './form'
 
 export function PersonName({ id, withAvatar = true, size = 24, subtitle, className }: { id: string | null | undefined; withAvatar?: boolean; size?: number; subtitle?: ReactNode; className?: string }) {
   const { get } = usePeopleMap()
@@ -49,6 +50,8 @@ export function Combobox({
 }) {
   const [open, setOpen] = useState(false)
   const sel = options.find((o) => o.value === value)
+  const fa = useFieldAria({}) // V9-FIX (item 13): named by its Field's label + the shown value
+  const valId = useId()
   const groups = useMemo(() => {
     const m = new Map<string, ComboOption[]>()
     for (const o of options) {
@@ -69,12 +72,14 @@ export function Combobox({
           type="button"
           disabled={disabled}
           aria-invalid={invalid || undefined}
+          aria-labelledby={fa['aria-labelledby'] ? `${fa['aria-labelledby']} ${valId}` : undefined}
+          aria-describedby={fa['aria-describedby']}
           className={cn(
             'flex h-[var(--ctl-h)] w-full items-center gap-2 rounded-md border border-line-strong/80 bg-surface px-3 text-left outline-none transition focus:border-brand focus:ring-[3px] focus:ring-brand/15 disabled:bg-surface-2 aria-[invalid=true]:border-danger',
             className,
           )}
         >
-          <span className={cn('min-w-0 flex-1 truncate', !sel && 'text-ink-3')}>{sel ? (renderValue ? renderValue(sel) : <span className="flex items-center gap-2">{sel.leading}<span className="truncate">{sel.label}</span></span>) : placeholder}</span>
+          <span id={valId} className={cn('min-w-0 flex-1 truncate', !sel && 'text-ink-3')}>{sel ? (renderValue ? renderValue(sel) : <span className="flex items-center gap-2">{sel.leading}<span className="truncate">{sel.label}</span></span>) : placeholder}</span>
           {clearable && sel ? (
             <span
               role="button"
@@ -96,7 +101,7 @@ export function Combobox({
     >
       <Command className="flex max-h-[340px] flex-col" loop>
         <div className="border-b border-line px-3">
-          <Command.Input autoFocus placeholder={searchPlaceholder} className="h-11 w-full bg-transparent text-[14px] outline-none placeholder:text-ink-3" />
+          <Command.Input autoFocus aria-label={searchPlaceholder} placeholder={searchPlaceholder} className="h-11 w-full bg-transparent text-[14px] outline-none placeholder:text-ink-3" />
         </div>
         <Command.List className="min-h-0 flex-1 overflow-y-auto p-1 scroll-thin">
           <Command.Empty className="px-3 py-6 text-center text-[13px] text-ink-3">{emptyText}</Command.Empty>

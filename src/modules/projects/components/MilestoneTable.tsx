@@ -55,7 +55,7 @@ export function MilestoneTable({ d, className }: { d: ProjectDetail; className?:
               </thead>
               <tbody>
                 {d.milestones.map((m) => (
-                  <tr key={m.id} className="border-b border-line last:border-0 align-middle">
+                  <tr key={m.id} id={`ms-${m.id}`} tabIndex={-1} className="scroll-mt-24 border-b border-line last:border-0 align-middle outline-none data-[focus=true]:bg-brand/10">
                     <td className="py-2.5 pl-4 pr-3 md:pl-5">
                       <div className="min-w-0">
                         <span className="tnum mr-1.5 font-semibold text-ink">M{m.no}</span>
@@ -98,7 +98,7 @@ export function MilestoneTable({ d, className }: { d: ProjectDetail; className?:
           {/* phones: stacked rows */}
           <ul className="divide-y divide-line border-t border-line md:hidden">
             {d.milestones.map((m) => (
-              <li key={m.id} className="px-4 py-3">
+              <li key={m.id} id={`ms-m-${m.id}`} tabIndex={-1} className="scroll-mt-24 px-4 py-3 outline-none data-[focus=true]:bg-brand/10">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="text-[14px] leading-snug">
@@ -285,7 +285,7 @@ function AddMilestoneRow({ d }: { d: ProjectDetail }) {
           }}
           onKeyDown={(e) => e.key === 'Enter' && submit()}
         />
-        <MoneyInput value={amt} onChange={setAmt} placeholder="Billing amount (optional)" />
+        <MoneyInput value={amt} onChange={setAmt} placeholder="Billing amount (optional)" aria-label="Billing amount (optional)" />
         <Button variant="primary" loading={add.isPending} onClick={submit}>
           Add milestone
         </Button>

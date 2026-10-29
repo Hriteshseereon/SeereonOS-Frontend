@@ -1,6 +1,6 @@
 // Resource rows of an estimate: a named person (CTC from cost rates, shown only with the salaries permission) or a
-// role placeholder with an assumed monthly CTC (people not hired yet). Milestone, % and dates are required like the
-// create-project calculator; From/To default to the milestone's dates. Every number comes from the server preview.
+// role placeholder with an assumed monthly CTC (people not hired yet). v9: a row can span All milestones (the calculator asks
+// for resources before the milestone-wise price breakdown); From/To default to the milestone's (or project's) dates. Every number comes from the server preview.
 import { User, Users, X } from '@/ui/icons'
 import { useDirectory } from '@/api/core'
 import type { EstimatePreview } from '@/api/estimates'
@@ -19,13 +19,13 @@ export function ResourceRows({ rows, onChange, preview, errors, readOnly, canNam
   const people = (dir.data ?? []).filter((p) => p.status === 'active').sort((a, b) => a.name.localeCompare(b.name))
   const ms = preview?.milestones ?? []
   const set = (key: string, patch: Partial<EstRow>) => onChange(rows.map((r) => (r.key === key ? { ...r, ...patch } : r)))
-  const add = (kind: EstRow['kind']) => onChange([...rows, { key: newKey('r'), kind, user_id: null, role_label: '', ctc_paise: 0, ms: ms.length ? '0' : '', pct: '100', from_on: null, to_on: null }])
+  const add = (kind: EstRow['kind']) => onChange([...rows, { key: newKey('r'), kind, user_id: null, role_label: '', ctc_paise: 0, ms: '', pct: '100', from_on: null, to_on: null }])
   const t = preview?.totals
   return (
     <div className="@container">
       <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
         <p className="min-w-0 flex-1 basis-[260px] text-[12.5px] leading-relaxed text-ink-3">
-          Pick a person for people you have, or a role with an assumed monthly CTC for people you would hire. Each row lands on a milestone; From and To follow that milestone unless you change them.
+          Pick a person for people you have, or a role with an assumed monthly CTC for people you would hire. A row spans the whole project (All milestones) or one milestone; From and To follow those dates unless you change them.
         </p>
         {t && <span className="tnum whitespace-nowrap text-[12.5px] text-ink-3">{fmtNum(t.man_days, 1)} man-days · {fmtMoney(t.resources)}</span>}
       </div>
@@ -33,7 +33,7 @@ export function ResourceRows({ rows, onChange, preview, errors, readOnly, canNam
         <div className={cn('hidden gap-2 border-b border-line pb-2 @min-[1040px]:grid', GRID)}>
           <span className={HEAD}>Type</span>
           <span className={HEAD}>Resource</span>
-          <span className={HEAD}>Milestone *</span>
+          <span className={HEAD}>Milestone</span>
           <span className={HEAD}>Alloc. %</span>
           <span className={HEAD}>From *</span>
           <span className={HEAD}>To *</span>
@@ -93,8 +93,8 @@ export function ResourceRows({ rows, onChange, preview, errors, readOnly, canNam
                   )}
                 </div>
                 <label className="min-w-0">
-                  <span className={LBL}>Milestone *</span>
-                  <Select aria-label={`Row ${i + 1} milestone`} value={r.ms} disabled={readOnly} invalid={!!e('milestone_id')} placeholder="—" onChange={(ev) => set(r.key, { ms: ev.target.value, from_on: null, to_on: null })} options={ms.map((m) => ({ value: String(m.index), label: m.code }))} />
+                  <span className={LBL}>Milestone</span>
+                  <Select aria-label={`Row ${i + 1} milestone`} value={r.ms} disabled={readOnly} invalid={!!e('milestone_id')} onChange={(ev) => set(r.key, { ms: ev.target.value, from_on: null, to_on: null })} options={[{ value: '', label: 'All milestones' }, ...ms.map((m) => ({ value: String(m.index), label: m.code }))]} />
                 </label>
                 <label className="min-w-0">
                   <span className={LBL}>Alloc. %</span>

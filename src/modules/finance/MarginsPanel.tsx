@@ -17,15 +17,18 @@ export function useMargins(scope: PortfolioMargins['scope'] = 'active', enabled 
 }
 
 const marginClass = (v: number | null, floor: number) => (v === null ? 'text-ink-3' : v < 0 || v < floor / 100 ? TONE_TEXT.danger : TONE_TEXT.success)
-const scopeWord = (s: PortfolioMargins['scope']) => (s === 'active' ? 'active' : s === 'open' ? 'open' : '')
+/** V9-FIX (item 11): every portfolio total names the projects it covers. Insights › Project margins covers "Live incl.
+ *  on hold" and Reports › Project margins "All statuses" (or its status filter); per-project numbers are identical. */
+export const MARGIN_SCOPE_LABEL: Record<PortfolioMargins['scope'], string> = { active: 'Active projects', open: 'Open incl. on hold', all: 'All projects' }
 
 export function MarginKpis({ d, size = 'md' }: { d: PortfolioMargins; size?: 'md' | 'lg' }) {
   const k = d.kpis
+  const sc = MARGIN_SCOPE_LABEL[d.scope]
   const items = [
-    { label: `Contract value, ${k.projects} ${scopeWord(d.scope)} project${k.projects === 1 ? '' : 's'}`.replace('  ', ' '), value: fmtMoney(k.contract_value), cls: 'text-ink' },
-    { label: 'Projected gross profit', value: fmtMoney(k.projected_profit), cls: k.projected_profit < 0 ? TONE_TEXT.danger : TONE_TEXT.success },
-    { label: 'Projected gross margin', value: fmtPct(k.projected_margin), cls: marginClass(k.projected_margin, d.floor_pct) },
-    { label: `Actual margin (invoiced ${fmtMoney(k.invoiced ?? 0)} vs approved hours)`, value: fmtPct(k.actual_margin), cls: marginClass(k.actual_margin, d.floor_pct) },
+    { label: `Contract value · ${sc} (${k.projects})`, value: fmtMoney(k.contract_value), cls: 'text-ink' },
+    { label: `Projected gross profit · ${sc}`, value: fmtMoney(k.projected_profit), cls: k.projected_profit < 0 ? TONE_TEXT.danger : TONE_TEXT.success },
+    { label: `Projected gross margin · ${sc}`, value: fmtPct(k.projected_margin), cls: marginClass(k.projected_margin, d.floor_pct) },
+    { label: `Actual margin · ${sc} (invoiced ${fmtMoney(k.invoiced ?? 0)} vs approved hours)`, value: fmtPct(k.actual_margin), cls: marginClass(k.actual_margin, d.floor_pct) },
   ]
   return (
     <div className="grid grid-cols-2 gap-x-4 gap-y-4 lg:grid-cols-4">
@@ -128,7 +131,7 @@ export function MarginsTable({ d }: { d: PortfolioMargins }) {
 export function marginsExport(d: PortfolioMargins): ExportTable {
   return {
     title: 'Profit margins',
-    subtitle: d.scope === 'active' ? 'Active projects' : d.scope === 'open' ? 'Open projects' : 'All projects',
+    subtitle: MARGIN_SCOPE_LABEL[d.scope],
     category: 'Finance report',
     orientation: 'landscape',
     columns: [
@@ -151,10 +154,10 @@ export function marginsExport(d: PortfolioMargins): ExportTable {
     })),
     totals: { contract: d.kpis.contract_value, profit: d.kpis.projected_profit, ctd: d.kpis.cost_to_date, pcost: d.rows.reduce((s, r) => s + r.projected_cost, 0) },
     kpis: [
-      { label: 'Contract value', value: fmtMoney(d.kpis.contract_value) },
-      { label: 'Projected gross profit', value: fmtMoney(d.kpis.projected_profit) },
-      { label: 'Projected gross margin', value: fmtPct(d.kpis.projected_margin) },
-      { label: 'Actual margin', value: fmtPct(d.kpis.actual_margin) },
+      { label: `Contract value · ${MARGIN_SCOPE_LABEL[d.scope]}`, value: fmtMoney(d.kpis.contract_value) },
+      { label: `Projected gross profit · ${MARGIN_SCOPE_LABEL[d.scope]}`, value: fmtMoney(d.kpis.projected_profit) },
+      { label: `Projected gross margin · ${MARGIN_SCOPE_LABEL[d.scope]}`, value: fmtPct(d.kpis.projected_margin) },
+      { label: `Actual margin · ${MARGIN_SCOPE_LABEL[d.scope]}`, value: fmtPct(d.kpis.actual_margin) },
     ],
     notes: [
       'Planned: revenue = contract value; cost = allocation and estimates (plus the saved costing extras). What did we expect to make?',
@@ -173,7 +176,7 @@ export function ProfitMarginsCard({ scope = 'active', className }: { scope?: Por
   if (!allowed) return null
   return (
     <Card className={className}>
-      <CardHeader title={<span className="inline-flex flex-wrap items-center gap-2">Profit margins <Badge size="sm">CEO and margins permission</Badge></span>} subtitle="CEO view of profit margins across all projects." />
+      <CardHeader title={<span className="inline-flex flex-wrap items-center gap-2">Profit margins <Badge size="sm">CEO and margins permission</Badge></span>} subtitle={`CEO view of profit margins — totals cover ${MARGIN_SCOPE_LABEL[scope].toLowerCase()}.`} />
       {q.isLoading ? (
         <SkeletonRows rows={3} />
       ) : q.error || !q.data ? (

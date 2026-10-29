@@ -14,6 +14,7 @@ import { PRESET_LABEL } from '@/reports/datasets'
 import { fmtDateTime } from '@/domain/calendar'
 import { ReportChart, ReportTable, SpecChips, toExportTable } from './components/ReportVisual'
 import { SourceBadge } from './components/Conversation'
+import { TypedSavedView } from './ReportTypePage'
 
 export default function ReportViewPage() {
   const { id } = useParams<{ id: string }>()
@@ -28,7 +29,7 @@ export default function ReportViewPage() {
   const [how, setHow] = useState(false)
   const chartRef = useRef<HTMLDivElement>(null)
   const effCompare = compare ?? rep.data?.spec.compare === 'previous_period'
-  const run = useApi(['reports', 'run', id, preset, effCompare], () => reportsApi.runSaved(id!, { ...(preset ? { period: { preset } } : {}), compare: effCompare ? 'previous_period' : 'none' }), { enabled: !!rep.data, placeholderData: (p) => p })
+  const run = useApi(['reports', 'run', id, preset, effCompare], () => reportsApi.runSaved(id!, { ...(preset ? { period: { preset } } : {}), compare: effCompare ? 'previous_period' : 'none' }), { enabled: !!rep.data && !rep.data.report_type, placeholderData: (p) => p })
   const [explain, setExplain] = useState<{ text: string; source: 'llm' | 'rules' } | null>(null)
   const ai = useMutation({
     mutationFn: async () => {
@@ -48,6 +49,7 @@ export default function ReportViewPage() {
   if (rep.isLoading) return <SkeletonRows rows={8} />
   if (rep.error || !rep.data) return <ErrorState error={rep.error} onRetry={() => rep.refetch()} />
   const r = rep.data
+  if (r.report_type) return <TypedSavedView report={r} />
   const res = run.data
   const hasDims = !!res?.columns.some((x) => x.role === 'dimension')
   const hasMeasures = !!res?.columns.some((x) => x.role === 'measure')

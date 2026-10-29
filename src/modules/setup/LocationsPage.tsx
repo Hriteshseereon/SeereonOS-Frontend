@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import type { Location } from '@/types/access'
 import { INDIAN_STATES } from '@/api/master'
+import { useHolidayCalendars } from '@/api/adminSetup'
+import { todayISO } from '@/domain/calendar'
 import { Badge, Checkbox, Field, Input, Select } from '@/ui'
 import { InactiveBadge, MasterListPage, PeopleCount, RecordDialog, errOf, useSaveRecord } from './master/kit'
 
@@ -61,7 +63,10 @@ function LocationDialog({ row, onClose }: { row: Location | null; onClose: () =>
   const [f, setF] = useState({
     name: row?.name ?? '', code: row?.code ?? '', address: row?.address ?? '', city: row?.city ?? '', state: row?.state ?? '',
     timezone: row?.timezone ?? 'Asia/Kolkata', holiday_calendar: row?.holiday_calendar ?? 'Company holidays', is_head_office: row?.is_head_office ?? false,
+    holiday_calendar_id: row?.holiday_calendar_id ?? '',
   })
+  // v9: the location's holiday calendar (people here follow it); empty = the default calendar
+  const cals = useHolidayCalendars(Number(todayISO().slice(0, 4))).data
   const m = useSaveRecord('locations', row, onClose)
   const e = m.error
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((p) => ({ ...p, [k]: v }))
@@ -91,8 +96,16 @@ function LocationDialog({ row, onClose }: { row: Location | null; onClose: () =>
         <Field label="Time zone" htmlFor="loc-tz">
           <Select id="loc-tz" value={f.timezone} onChange={(x) => set('timezone', x.target.value)} options={ZONES.includes(f.timezone) ? ZONES : [f.timezone, ...ZONES]} />
         </Field>
-        <Field label="Holiday calendar" htmlFor="loc-cal" hint="Name of the calendar people here follow.">
-          <Input id="loc-cal" value={f.holiday_calendar} onChange={(x) => set('holiday_calendar', x.target.value)} />
+        <Field label="Holiday calendar" htmlFor="loc-cal" hint="People here follow it for working days and leave." error={errOf(e, 'holiday_calendar_id')}>
+          <Select
+            id="loc-cal"
+            value={f.holiday_calendar_id}
+            onChange={(x) => setF((p) => ({ ...p, holiday_calendar_id: x.target.value, holiday_calendar: cals?.calendars.find((c) => c.id === x.target.value)?.name ?? p.holiday_calendar }))}
+            options={[
+              { value: '', label: `Default (${cals?.calendars.find((c) => c.is_default)?.name ?? 'Company holidays'})` },
+              ...(cals?.calendars.filter((c) => c.active && !c.is_default).map((c) => ({ value: c.id, label: c.name })) ?? []),
+            ]}
+          />
         </Field>
       </div>
       <Checkbox

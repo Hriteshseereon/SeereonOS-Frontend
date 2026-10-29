@@ -14,7 +14,7 @@ import {
   Avatar, Badge, Button, Callout, Card, CardHeader, Dialog, EmptyState, ErrorState, Field, FileUpload, FilterChips, IconButton, Input, KV, Menu, MoneyInput, PageHeader, PeoplePicker, Segmented, Select, Sheet,
   SkeletonCards, SkeletonRows, StatCard, StatusBadge, Textarea, useConfirm, useReadOnly,
 } from '@/ui'
-import { CANDIDATE_STAGE, SOURCE, STAGES } from './components'
+import { CANDIDATE_STAGE, MANUAL_SOURCES, SOURCE, STAGES } from './components'
 
 const INV = [['recruitment'], ['candidate'], ['lifecycle'], ['hr-dashboard']]
 type MoveAsk = { c: CandidateRow; stage: 'offer' | 'hired' } | null
@@ -297,8 +297,17 @@ function SheetBody({ c }: { c: CandidateDetail }) {
             { label: 'Current CTC', value: <span className="tnum">{fmtMoneyCompact(c.current_ctc_paise)}</span> },
             { label: 'Expected CTC', value: <span className="tnum">{fmtMoneyCompact(c.expected_ctc_paise)}</span> },
             { label: 'Offered CTC', value: <span className="tnum">{fmtMoneyCompact(c.offer_ctc_paise)}</span> },
+            ...(c.current_company || c.current_title ? [{ label: 'Currently', value: [c.current_title, c.current_company].filter(Boolean).join(' at ') }] : []),
+            ...(c.location ? [{ label: 'Location', value: c.location }] : []),
+            ...(c.linkedin_url ? [{ label: 'LinkedIn', value: <a href={c.linkedin_url} target="_blank" rel="noopener noreferrer" className="break-all text-brand-text hover:underline">Profile</a> }] : []),
           ]}
         />
+        {c.cover_note && (
+          <div className="mt-3 rounded-md border border-line bg-surface-2/60 px-3 py-2.5">
+            <div className="text-[12px] font-medium text-ink-3">Cover note{c.consent_at ? ` · consent given ${fmtDate(c.consent_at.slice(0, 10))}` : ''}</div>
+            <p className="mt-1 whitespace-pre-line text-[13px] text-ink-2">{c.cover_note}</p>
+          </div>
+        )}
         {c.notes && <p className="mt-3 text-[13px] text-ink-2">{c.notes}</p>}
       </section>
 
@@ -451,7 +460,7 @@ function AddCandidateDialog({ openings, defaultOpening, onClose }: { openings: R
           <Field label="Name" required error={errs.name}><Input value={f.name} invalid={!!errs.name} onChange={set('name')} /></Field>
           <Field label="Email" required error={errs.email}><Input type="email" value={f.email} invalid={!!errs.email} onChange={set('email')} /></Field>
           <Field label="Phone"><Input value={f.phone} onChange={set('phone')} /></Field>
-          <Field label="Source" error={errs.source}><Select value={f.source} onChange={set('source')} options={Object.entries(SOURCE).map(([value, label]) => ({ value, label }))} /></Field>
+          <Field label="Source" error={errs.source}><Select value={f.source} onChange={set('source')} options={MANUAL_SOURCES.map(([value, label]) => ({ value, label }))} /></Field>
           <Field label="Experience (years)" error={errs.experience_years}><Input type="number" min={0} value={f.experience_years} onChange={set('experience_years')} /></Field>
           <Field label="Notice (days)" error={errs.notice_days}><Input type="number" min={0} value={f.notice_days} onChange={set('notice_days')} /></Field>
         </div>

@@ -5,7 +5,7 @@ import { Link, useParams } from 'react-router-dom'
 import { FileText, MoreHorizontal, Pencil, Plus, RefreshCw } from '@/ui/icons'
 import {
   Badge, Button, Callout, Card, CardHeader, DataTable, Dialog, EmptyState, ErrorState, Field, FileUpload, IconButton, Input, KV, ListGroup, ListRow, Menu, Money, MoneyInput, PageHeader,
-  PeoplePicker, Select, SkeletonCards, SkeletonRows, StatCard, StatusBadge, Switch, Textarea, useConfirm, useReadOnly, type Column,
+  Select, SkeletonCards, SkeletonRows, StatCard, StatusBadge, Switch, Textarea, useCan, useConfirm, useReadOnly, type Column,
 } from '@/ui'
 import { useMut } from '@/api/query'
 import { CLIENTS_INVALIDATE, clientsApi, useClient, type ClientDetail, type ClientInput, type ClientRow, type ContractInput, type ContractRow } from '@/api/clients'
@@ -17,7 +17,9 @@ import { cn } from '@/lib/utils'
 import type { Contract } from '@/types/business'
 import { CLIENT_HEALTH, CLIENT_STATUS, CONTRACT_KIND, CONTRACT_STATUS, EXPENSE_STATUS, LEAKAGE_STATUS } from '@/modules/spend/labels'
 import { KpiRow, Meta, useFieldErrors } from '@/modules/spend/components'
-import { GST_STATES } from '@/domain/gst'
+import type { CustomerExtras, CustomerInput } from '@/api/projectWizard'
+import { CustomerForm, emptyCustomer } from './CustomerForm'
+import { CustomerProjectsCard } from './CustomerProjects'
 
 export default function ClientPage() {
   const { id } = useParams()
@@ -31,7 +33,7 @@ export default function ClientPage() {
   if (q.isLoading)
     return (
       <div>
-        <PageHeader title="Client" back={{ to: '/clients', label: 'Clients' }} />
+        <PageHeader title="Customer" back={{ to: '/clients', label: 'Customers' }} />
         <SkeletonCards n={4} />
         <Card className="mt-4"><SkeletonRows rows={5} /></Card>
       </div>
@@ -39,15 +41,16 @@ export default function ClientPage() {
   if (q.error || !d)
     return (
       <div>
-        <PageHeader title="Client" back={{ to: '/clients', label: 'Clients' }} />
+        <PageHeader title="Customer" back={{ to: '/clients', label: 'Customers' }} />
         <ErrorState error={q.error} onRetry={() => q.refetch()} />
       </div>
     )
   const c = d.client
+  const cx = c as typeof c & CustomerExtras
   return (
     <div>
       <PageHeader
-        back={{ to: '/clients', label: 'Clients' }}
+        back={{ to: '/clients', label: 'Customers' }}
         title={c.name}
         subtitle={[c.industry, c.country, c.since ? `client since ${fmtDate(c.since)}` : null].filter(Boolean).join(' · ')}
         meta={
@@ -59,7 +62,7 @@ export default function ClientPage() {
         actions={
           !readOnly && (
             <>
-              <Button icon={<Pencil className="size-4" />} onClick={() => setEditing(true)}>Edit client</Button>
+              <Button icon={<Pencil className="size-4" />} onClick={() => setEditing(true)}>Edit customer</Button>
               <Button variant="primary" icon={<Plus className="size-4" />} onClick={() => setContract('new')} className="flex-1 md:flex-none">Add contract</Button>
             </>
           )
@@ -81,28 +84,7 @@ export default function ClientPage() {
         <div className="min-w-0 space-y-4 lg:col-span-8">
           <Contracts d={d} readOnly={readOnly} onEdit={setContract} onRenew={setRenewing} />
           <Invoices d={d} />
-          <Card>
-            <CardHeader title="Projects" subtitle={`${d.projects.length} with ${c.name}`} />
-            {d.projects.length ? (
-              <ListGroup className="-mx-1 border-0">
-                {d.projects.map((p) => (
-                  <ListRow
-                    key={p.id}
-                    to={`/projects/${p.id}`}
-                    className="px-1"
-                    title={`${p.code} · ${p.name}`}
-                    subtitle={`${p.pm_name} · ends ${fmtDate(p.end_on)}`}
-                    trailing={
-                      <span className="flex flex-col items-end gap-1">
-                        <StatusBadge map={PROJECT_STATUS} value={p.status} size="sm" />
-                        {p.contract_value_paise !== null && <span className="tnum text-[12px] text-ink-3">{fmtMoneyCompact(p.contract_value_paise)}</span>}
-                      </span>
-                    }
-                  />
-                ))}
-              </ListGroup>
-            ) : <EmptyState title="No projects yet" compact />}
-          </Card>
+          <CustomerProjectsCard clientId={c.id} name={c.name} />
           <Card>
             <CardHeader title="Deals" subtitle="Pipeline with this client" />
             {d.deals.length ? (
@@ -129,13 +111,32 @@ export default function ClientPage() {
               cols={1}
               items={[
                 { label: 'Account manager', value: c.owner_id ? <Link to="/people" className="hover:underline">{c.owner_name}</Link> : '—' },
+                ...(cx.registered_name ? [{ label: 'Registered name', value: cx.registered_name }] : []),
                 { label: 'GSTIN', value: <span className="tnum">{c.gstin || (c.country !== 'India' ? 'Overseas client' : 'Not on file')}</span> },
+                ...(cx.cin ? [{ label: 'CIN', value: <span className="tnum">{cx.cin}</span> }] : []),
                 { label: 'Payment terms', value: `${c.payment_terms_days} days` },
                 { label: 'Billing address', value: [c.billing_address, [c.city, c.state].filter(Boolean).join(', '), c.pincode].filter(Boolean).join(' · ') || '—' },
                 ...(c.state_code && c.state_code !== '96' ? [{ label: 'GST state code', value: <span className="tnum">{c.state_code}</span> }] : []),
                 ...(c.pan ? [{ label: 'PAN', value: <span className="tnum">{c.pan}</span> }] : []),
+                ...(cx.registered_address ? [{ label: 'Registered address', value: cx.registered_address.same_as_billing ? 'Same as billing' : [cx.registered_address.line, [cx.registered_address.city, cx.registered_address.state].filter(Boolean).join(', '), cx.registered_address.pincode].filter(Boolean).join(' · ') || '—' }] : []),
               ]}
             />
+          </Card>
+          <Card>
+            <CardHeader title="Payments profile" subtitle="The customer’s bank and billing details" />
+            {cx.payments_profile ? (
+              <KV
+                cols={1}
+                items={[
+                  { label: 'Bank', value: cx.payments_profile.bank_name || '—' },
+                  { label: 'Account name', value: cx.payments_profile.account_name || '—' },
+                  { label: 'Account number', value: <span className="tnum">{cx.payments_profile.account_no || '—'}</span> },
+                  { label: 'IFSC', value: <span className="tnum">{cx.payments_profile.ifsc || '—'}</span> },
+                  { label: 'UPI', value: cx.payments_profile.upi || '—' },
+                  { label: 'Billing e-mail', value: cx.payments_profile.billing_email || '—' },
+                ]}
+              />
+            ) : <p className="text-[13px] text-ink-3">None on file. Optional — add it from Edit customer.</p>}
           </Card>
           <Card>
             <CardHeader title="Contacts" />
@@ -332,56 +333,36 @@ function Invoices({ d }: { d: ClientDetail }) {
 }
 
 /* ---------------- dialogs ---------------- */
+/** Add / edit a customer (v9 D2): the CustomerForm — registered name, GSTIN, PAN, CIN, addresses, contacts, payments profile. */
 export function ClientDialog({ row, onClose, onCreated }: { row: ClientRow | null; onClose: () => void; onCreated?: (id: string) => void }) {
-  const [f, setF] = useState<ClientInput>({
-    name: row?.name ?? '', industry: row?.industry ?? '', country: row?.country ?? 'India', gstin: row?.gstin ?? '', billing_address: row?.billing_address ?? '', primary_contact: row?.primary_contact ?? '',
-    email: row?.email ?? '', phone: row?.phone ?? '', owner_id: row?.owner_id ?? null, payment_terms_days: row?.payment_terms_days ?? 30, status: row?.status,
-    city: row?.city ?? '', state: row?.state ?? '', state_code: row?.state_code && row.state_code !== '96' ? row.state_code : '', pincode: row?.pincode ?? '', pan: row?.pan ?? '',
-  })
-  const india = /^(india|in)$/i.test(f.country.trim() || 'India')
+  const canFinance = useCan()('finance.edit')
+  const x = row as (ClientRow & CustomerExtras) | null
+  const [f, setF] = useState<CustomerInput & { status?: ClientInput['status'] }>(() =>
+    x
+      ? {
+          name: x.name, registered_name: x.registered_name ?? '', industry: x.industry, country: x.country || 'India', gstin: x.gstin, pan: x.pan ?? '', cin: x.cin ?? '', billing_address: x.billing_address,
+          city: x.city ?? '', state: x.state ?? '', state_code: x.state_code && x.state_code !== '96' ? x.state_code : '', pincode: x.pincode ?? '',
+          registered_address: x.registered_address ?? { same_as_billing: true }, contacts: x.contacts ?? (x.primary_contact ? [{ name: x.primary_contact, role: 'Primary contact', email: x.email, phone: x.phone, primary: true }] : []),
+          payments_profile: x.payments_profile ? { ...x.payments_profile } : null, payment_terms_days: x.payment_terms_days, owner_id: x.owner_id, status: x.status,
+        }
+      : emptyCustomer(),
+  )
   const fe = useFieldErrors()
-  const set = <K extends keyof ClientInput>(k: K, v: ClientInput[K]) => { setF((x) => ({ ...x, [k]: v })); fe.unset(k) }
-  const save = useMut(() => (row ? clientsApi.update(row.id, f, row.version) : clientsApi.create(f)), {
-    invalidate: CLIENTS_INVALIDATE, success: row ? 'Client saved' : 'Client added', onSuccess: (r) => { onClose(); if (!row && r && 'id' in (r as object)) onCreated?.((r as { id: string }).id) }, onError: (e) => fe.take(e),
+  const [errs, setErrs] = useState<Record<string, string>>({})
+  const save = useMut(() => (row ? clientsApi.update(row.id, f as Partial<ClientInput>, row.version) : clientsApi.create(f as ClientInput)), {
+    invalidate: CLIENTS_INVALIDATE, success: row ? 'Customer saved' : 'Customer added', silentError: true,
+    onSuccess: (r) => { onClose(); if (!row && r && 'id' in (r as object)) onCreated?.((r as { id: string }).id) },
+    onError: (e) => { fe.take(e); setErrs(e.field ? { [e.field]: e.message } : { name: e.message }) },
   })
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()} title={row ? `Edit ${row.name}` : 'Add client'} footer={<Button variant="primary" onClick={() => save.mutate(undefined)} loading={save.isPending}>{row ? 'Save client' : 'Add client'}</Button>}>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Client name" required error={fe.errors.name} className="sm:col-span-2">
-          <Input value={f.name} onChange={(e) => set('name', e.target.value)} invalid={!!fe.errors.name} />
+    <Dialog open size="lg" onOpenChange={(o) => !o && onClose()} title={row ? `Edit ${row.name}` : 'Add customer'} description="A customer has many projects. Only the name is required; GSTIN, PAN, CIN, addresses and the payments profile can follow." footer={<Button variant="primary" onClick={() => save.mutate(undefined)} loading={save.isPending}>{row ? 'Save customer' : 'Add customer'}</Button>}>
+      {Object.keys(errs).length > 0 && <Callout tone="danger" className="mb-4">{Object.values(errs)[0]}</Callout>}
+      <CustomerForm value={f} onChange={(v) => { setF({ ...v, status: f.status }); setErrs({}) }} errors={errs} canSeePayments={canFinance} />
+      {row && (
+        <Field label="Status" className="mt-5 max-w-[320px]" hint="Status follows projects and contracts; set Churned when the customer leaves.">
+          <Select aria-label="Status" value={f.status ?? row.status} onChange={(e) => setF({ ...f, status: e.target.value as ClientInput['status'] })} options={Object.entries(CLIENT_STATUS).map(([value, s]) => ({ value, label: s.label }))} />
         </Field>
-        <Field label="Industry"><Input value={f.industry} onChange={(e) => set('industry', e.target.value)} placeholder="e.g. Education" /></Field>
-        <Field label="Country"><Input value={f.country} onChange={(e) => set('country', e.target.value)} /></Field>
-        <Field label="Account manager"><PeoplePicker value={f.owner_id} onChange={(v) => set('owner_id', v)} clearable /></Field>
-        <Field label="Payment terms" error={fe.errors.payment_terms_days}><Input type="number" min={0} max={180} suffix="days" value={String(f.payment_terms_days)} onChange={(e) => set('payment_terms_days', Number(e.target.value))} /></Field>
-        <Field label="GSTIN" error={fe.errors.gstin} hint="Leave empty for overseas clients."><Input value={f.gstin} maxLength={15} onChange={(e) => set('gstin', e.target.value.toUpperCase())} className="tnum uppercase" invalid={!!fe.errors.gstin} /></Field>
-        {row && (
-          <Field label="Status" hint="Status follows projects and contracts; set Churned when the client leaves.">
-            <Select aria-label="Status" value={f.status ?? row.status} onChange={(e) => set('status', e.target.value as ClientInput['status'])} options={Object.entries(CLIENT_STATUS).map(([value, s]) => ({ value, label: s.label }))} />
-          </Field>
-        )}
-        <Field label="Primary contact"><Input value={f.primary_contact} onChange={(e) => set('primary_contact', e.target.value)} /></Field>
-        <Field label="Phone"><Input value={f.phone} onChange={(e) => set('phone', e.target.value)} inputMode="tel" /></Field>
-        <Field label="Email" error={fe.errors.email} className="sm:col-span-2"><Input type="email" value={f.email} onChange={(e) => set('email', e.target.value)} invalid={!!fe.errors.email} /></Field>
-        <Field label="Billing address" className="sm:col-span-2"><Textarea rows={2} value={f.billing_address} onChange={(e) => set('billing_address', e.target.value)} placeholder="Building, street, area" /></Field>
-        <Field label="City" htmlFor="cl-city"><Input id="cl-city" value={f.city ?? ''} onChange={(e) => set('city', e.target.value)} /></Field>
-        {india ? (
-          <Field label="State" htmlFor="cl-state" error={fe.errors.state ?? fe.errors.state_code} hint="Sets the place of supply on invoices (CGST + SGST or IGST).">
-            <Select
-              id="cl-state"
-              value={f.state_code ?? ''}
-              onChange={(e) => { const code = e.target.value; setF((x) => ({ ...x, state_code: code, state: GST_STATES.find((g) => g.code === code)?.name ?? '' })); fe.unset('state'); fe.unset('state_code'); fe.unset('gstin') }}
-              options={[{ value: '', label: 'Choose a state' }, ...GST_STATES.filter((g) => g.code !== '96' && g.code !== '97').map((g) => ({ value: g.code, label: `${g.name} (${g.code})` }))]}
-            />
-          </Field>
-        ) : (
-          <Field label="State / region" htmlFor="cl-state"><Input id="cl-state" value={f.state ?? ''} onChange={(e) => set('state', e.target.value)} /></Field>
-        )}
-        <Field label={india ? 'PIN code' : 'Postal code'} htmlFor="cl-pin" error={fe.errors.pincode}><Input id="cl-pin" value={f.pincode ?? ''} inputMode={india ? 'numeric' : undefined} maxLength={india ? 6 : 12} onChange={(e) => set('pincode', e.target.value)} className="tnum" invalid={!!fe.errors.pincode} /></Field>
-        {india && (
-          <Field label="PAN" htmlFor="cl-pan" error={fe.errors.pan} hint="Filled from the GSTIN when left empty."><Input id="cl-pan" value={f.pan ?? ''} maxLength={10} onChange={(e) => set('pan', e.target.value.toUpperCase())} className="tnum uppercase" invalid={!!fe.errors.pan} /></Field>
-        )}
-      </div>
+      )}
     </Dialog>
   )
 }

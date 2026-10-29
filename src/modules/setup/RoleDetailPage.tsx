@@ -1,7 +1,7 @@
 // Role detail: granular permission matrix, members and role details. Saves go through maker-checker.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { Copy, Trash2, Users } from '@/ui/icons'
+import { Columns3, Copy, Trash2, Users } from '@/ui/icons'
 import { useMut } from '@/api/query'
 import { accessApi, useRole } from '@/api/access'
 import { changesApi, isPending } from '@/api/changes'
@@ -98,12 +98,16 @@ export default function RoleDetailPage() {
           </>
         }
         actions={
-          c('roles.manage') &&
-          !readOnly && (
-            <Button size="sm" icon={<Copy className="size-3.5" />} loading={clone.isPending} onClick={() => clone.mutate(undefined)}>
-              Duplicate
+          <>
+            <Button size="sm" icon={<Columns3 className="size-3.5" />} onClick={async () => (await confirmDiscard()) && nav(`/setup/roles?tab=compare&roles=${encodeURIComponent(role.key)}`)}>
+              Compare
             </Button>
-          )
+            {c('roles.manage') && !readOnly && (
+              <Button size="sm" icon={<Copy className="size-3.5" />} loading={clone.isPending} onClick={() => clone.mutate(undefined)}>
+                Duplicate
+              </Button>
+            )}
+          </>
         }
       />
 

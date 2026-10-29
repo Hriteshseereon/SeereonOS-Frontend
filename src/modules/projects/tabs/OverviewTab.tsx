@@ -7,7 +7,8 @@ import { fmtMoney, fmtPct } from '@/domain/money'
 import { STREAM, TASK_STATUS } from '@/domain/labels'
 import { useUI } from '@/stores/ui'
 import { cn } from '@/lib/utils'
-import { Avatar, Badge, Button, Card, CardHeader, EmptyState, KV, PersonName, StatusBadge, Tooltip } from '@/ui'
+import { Avatar, Badge, Button, Card, CardHeader, EmptyState, KV, PersonName, StatusBadge, Tooltip, useCan } from '@/ui'
+import type { ProjectV9 } from '@/api/projectWizard'
 import { MS_STATE, MsStateBadge } from '../components/shared'
 import { StageBadge } from '@/modules/work/taskStage'
 import { progressOf, stageOf } from '@/domain/delivery'
@@ -16,6 +17,9 @@ import { ProjectReviews } from '../components/ProjectReviews'
 export function OverviewTab({ d }: { d: ProjectDetail }) {
   const nav = useNavigate()
   const p = d.project
+  const pv = p as ProjectV9
+  const cd = pv.client_details
+  const can = useCan()
   const risk = d.tasks.filter((t) => t.risk).sort((a, b) => rank(a) - rank(b) || a.due_on.localeCompare(b.due_on))
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
@@ -31,6 +35,9 @@ export function OverviewTab({ d }: { d: ProjectDetail }) {
               { label: 'Start', value: fmtDate(p.start_on) },
               { label: 'Planned end', value: fmtDate(p.end_on), hint: p.baseline_end_on && p.baseline_end_on !== p.end_on ? `Baseline ${fmtDate(p.baseline_end_on)}` : undefined },
               ...(d.metrics.contract_value !== null ? [{ label: 'Contract', value: fmtMoney(d.metrics.contract_value) }] : []),
+              { label: 'Customer', value: pv.client_id && can('clients.manage') ? <Link to={`/clients/${pv.client_id}`} className="font-medium text-brand-text hover:underline">{p.client}</Link> : p.client },
+              ...(cd?.contact_name ? [{ label: 'Client contact', value: [cd.contact_name, cd.contact_role].filter(Boolean).join(', '), hint: [cd.contact_email, cd.contact_phone].filter(Boolean).join(' · ') || undefined }] : []),
+              ...(cd?.po_reference ? [{ label: 'PO / work order', value: cd.po_reference }] : []),
             ]}
           />
         </Card>

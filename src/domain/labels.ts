@@ -72,8 +72,10 @@ export const HEALTH: Record<'on_track' | 'at_risk' | 'off_track', { label: strin
 }
 
 export const INTERNAL_CODES: Record<string, string> = {
-  meeting: 'Internal meeting', learning: 'Learning', presales: 'Pre-sales', admin: 'Admin', interview: 'Interviewing', bench: 'Bench', breaks: 'Lunch, tea and stand-up',
+  project_work: 'Project work (no task)', meeting: 'Internal meeting', learning: 'Learning', presales: 'Pre-sales', admin: 'Admin', support: 'Support', other: 'Other', interview: 'Interviewing', bench: 'Bench', breaks: 'Lunch, tea and stand-up',
 }
+/** v9 (D5): the activity code for time on a project without a task (the project and a description are required). */
+export const PROJECT_WORK = 'project_work'
 
 /* ---------------- v5 task stages and tags (Feature Guide §7) ---------------- */
 import { TASK_STAGES as V5_STAGES, TASK_TAG as V5_TAGS } from './delivery'

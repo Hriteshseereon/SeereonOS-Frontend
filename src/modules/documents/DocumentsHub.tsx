@@ -1,5 +1,5 @@
 // /documents — the Documents hub (v7). Tabs (?tab=): Templates, Issued documents, Policies, Employee documents,
-// Project documents and My documents. Tab visibility follows permissions; the server enforces the same rules.
+// Team documents (v9: by team → employee), Project documents and My documents. Tab visibility follows permissions; the server enforces the same rules.
 // ?doc=<id> opens a policy / project document (v3 notifications and the Approvals inbox link here).
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
@@ -16,15 +16,16 @@ import { ByProject } from './DocumentsPage'
 import { DocLibrary, DocSheet, FileIcon } from './shared'
 import { EmpDocUploadDialog, EmpDocsTable, IssueSheet, IssuedTable, MissingKinds, ReviewDialog } from './docUi'
 import type { EmpDocRow } from '@/api/docs'
+import TeamDocumentsTab from './TeamDocumentsTab'
 
-type Tab = 'templates' | 'issued' | 'policies' | 'employees' | 'projects' | 'mine'
-const ALL_TABS: Tab[] = ['templates', 'issued', 'policies', 'employees', 'projects', 'mine']
+type Tab = 'templates' | 'issued' | 'policies' | 'employees' | 'team' | 'projects' | 'mine'
+const ALL_TABS: Tab[] = ['templates', 'issued', 'policies', 'employees', 'team', 'projects', 'mine']
 const monthName = (ym: string) => parseISO(`${ym}-01`).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })
 
 export default function DocumentsHub() {
   const c = useCan()
   const [params, setParams] = useSearchParams()
-  const allowed: Record<Tab, boolean> = { templates: c('documents.templates'), issued: c('documents.templates'), policies: true, employees: c('documents.employee_files'), projects: true, mine: true }
+  const allowed: Record<Tab, boolean> = { templates: c('documents.templates'), issued: c('documents.templates'), policies: true, employees: c('documents.employee_files'), team: c('documents.employee_files'), projects: true, mine: true }
   const requested = params.get('tab') as Tab | null
   const fallback: Tab = allowed.templates ? 'templates' : 'mine'
   const tab: Tab = requested && ALL_TABS.includes(requested) && allowed[requested] ? requested : fallback
@@ -73,6 +74,7 @@ export default function DocumentsHub() {
           { value: 'issued', label: 'Issued documents', hidden: !allowed.issued },
           { value: 'policies', label: 'Policies' },
           { value: 'employees', label: 'Employee documents', hidden: !allowed.employees },
+          { value: 'team', label: 'Team documents', hidden: !allowed.team },
           { value: 'projects', label: 'Project documents' },
           { value: 'mine', label: 'My documents', count: toAck + toRead || undefined },
         ]}
@@ -81,6 +83,7 @@ export default function DocumentsHub() {
       {tab === 'issued' && <IssuedTab />}
       {tab === 'policies' && <PoliciesTab onOpen={(id) => setParam('doc', id)} />}
       {tab === 'employees' && <EmployeesTab />}
+      {tab === 'team' && <TeamDocumentsTab />}
       {tab === 'projects' && <ByProject onOpen={(id) => setParam('doc', id)} />}
       {tab === 'mine' && <MineTab onOpen={(id) => setParam('doc', id)} />}
       <DocSheet id={openId} onClose={() => setParam('doc', null, true)} />

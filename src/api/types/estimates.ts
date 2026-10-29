@@ -6,7 +6,8 @@ import type * as E from '@/types/entities'
 export interface EstimateCalcInput {
   start_on: string
   end_on: string
-  milestones: { name: string; billing_amount_paise: number }[]
+  /** v9: billing_pct (on every milestone) = milestone-wise price breakdown as % of the price */
+  milestones: { name: string; billing_amount_paise: number; billing_pct?: number }[]
   resources: EstimateResourceInput[]
   additional_costs: CostingAdditionalInput[]
   maintenance_paise: number

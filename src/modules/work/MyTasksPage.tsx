@@ -260,6 +260,22 @@ function SentBackNote({ t }: { t: MyTask }) {
   )
 }
 
+/** v9 (D4): who else works on it — "Co-assignee · owner Ravi" for my co-assigned tasks, "with Meera, Kiran" for mine. */
+function CoLine({ t }: { t: MyTask }) {
+  const people = usePeopleMap()
+  const first = (id: string | null | undefined) => (people.get(id)?.name ?? '—').split(' ')[0]
+  const co = (t.assignee_ids ?? []).filter((x) => x !== t.owner_id)
+  if (t.co_assignee)
+    return (
+      <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[12.5px] text-ink-3">
+        <Badge size="sm" tone="info">Co-assignee</Badge>
+        <span className="truncate">owner {people.get(t.owner_id)?.name ?? '—'} submits it for review</span>
+      </div>
+    )
+  if (!co.length) return null
+  return <div className="mt-0.5 truncate text-[12.5px] text-ink-3">with {co.map(first).join(', ')}</div>
+}
+
 function TaskTableRow({ t, covering, onSubmit }: { t: MyTask; covering?: boolean; onSubmit: (t: SubmittableTask) => void }) {
   const openTask = useUI((s) => s.openTask)
   const people = usePeopleMap()
@@ -278,6 +294,7 @@ function TaskTableRow({ t, covering, onSubmit }: { t: MyTask; covering?: boolean
           <span className="xl:hidden">{t.project_code} · {t.project_name}{covering ? ' · ' : ''}</span>
           {covering && <span>Covering {people.get(t.owner_id)?.name ?? 'owner'}{t.covering_days?.length ? ` · ${t.covering_days.map((d) => fmtDate(d, 'day')).join(', ')}` : ''}</span>}
         </div>
+        <CoLine t={t} />
         {waiting && <div className="truncate text-[12.5px] text-danger-text" title={waiting}>Waiting on {waiting}</div>}
         <SentBackNote t={t} />
       </td>
@@ -331,6 +348,7 @@ function TaskRow({ t, covering, onSubmit }: { t: MyTask; covering?: boolean; onS
         {t.milestone_label ? ` · ${t.milestone_label}` : ''}
         {covering ? ` · covering ${people.get(t.owner_id)?.name ?? 'owner'}${t.covering_days?.length ? ` (${t.covering_days.map((d) => fmtDate(d, 'day')).join(', ')})` : ''}` : ''}
       </div>
+      <CoLine t={t} />
       {t.blocked_by.length > 0 && (
         <div className="mt-1 truncate text-[12.5px] text-danger-text">
           Waiting on {t.blocked_by.map((b) => `${b.wbs} ${b.title} (${people.get(b.owner_id)?.name ?? 'unassigned'})`).join('; ')}

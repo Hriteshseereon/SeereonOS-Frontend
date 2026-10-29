@@ -250,7 +250,7 @@ function WaitingTable({ pending, bulk, sel, setSel }: { pending: ApprovalItem[];
                   {bulk && (
                     <td className="py-3 pl-4">
                       <div className={cn(p.days_below_min && 'pointer-events-none opacity-40')} title={p.days_below_min ? 'Has short days — review it on its own' : undefined}>
-                        <Checkbox checked={sel.includes(p.week_id)} disabled={!!p.days_below_min} onChange={(v) => setSel((s) => (v ? [...s, p.week_id] : s.filter((x) => x !== p.week_id)))} />
+                        <Checkbox aria-label={`Select ${p.user.name}’s week`} checked={sel.includes(p.week_id)} disabled={!!p.days_below_min} onChange={(v) => setSel((s) => (v ? [...s, p.week_id] : s.filter((x) => x !== p.week_id)))} />
                       </div>
                     </td>
                   )}
@@ -305,7 +305,7 @@ function PendingCard({ p, selectable, selected, onSelect }: { p: ApprovalItem; s
         <div className="flex min-w-0 items-start gap-3">
           {selectable && (
             <div className={cn('pt-0.5', p.days_below_min && 'pointer-events-none opacity-40')}>
-              <Checkbox checked={selected} onChange={onSelect} disabled={!!p.days_below_min} />
+              <Checkbox aria-label={`Select ${p.user.name}’s week`} checked={selected} onChange={onSelect} disabled={!!p.days_below_min} />
             </div>
           )}
           <div className="min-w-0 flex-1">
@@ -449,6 +449,7 @@ const CHIP: Record<ApprovalTeamView['people'][number]['cells'][number]['status']
   open: { label: 'Draft', cls: 'bg-surface-2 text-ink-2' },
   rejected: { label: 'Rejected', cls: 'bg-danger-soft text-danger-text' },
   upcoming: { label: 'Not started', cls: 'bg-surface-2 text-ink-3' },
+  not_joined: { label: 'Before joining', cls: 'bg-surface-2 text-ink-3' },
 }
 function Chip({ status }: { status: keyof typeof CHIP }) {
   return <span className={cn('inline-flex h-6 items-center whitespace-nowrap rounded px-2 text-[12px] font-semibold', CHIP[status].cls)}>{CHIP[status].label}</span>

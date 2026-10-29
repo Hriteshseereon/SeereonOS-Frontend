@@ -54,12 +54,28 @@ export function salesCompensation(monthlyCtc: Paise, variablePct: number, target
 /* v5 project cost calculator (Feature Guide §3, §6)                    */
 /* ------------------------------------------------------------------ */
 export const ADDITIONAL_COST_CATEGORIES: { value: string; label: string }[] = [
+  // v9 (D1) Commercials categories; the v8 ones below stay for saved plans and map onto them (COST_GROUP_OF)
+  { value: 'office_hardware', label: 'Office & hardware' },
+  { value: 'expenses', label: 'Expenses' },
+  { value: 'misc', label: 'Miscellaneous' },
   { value: 'software', label: 'Software & licences' },
   { value: 'hardware', label: 'Hardware' },
   { value: 'travel', label: 'Travel' },
   { value: 'third_party', label: 'Third-party services' },
   { value: 'training', label: 'Training' },
   { value: 'other', label: 'Other' },
+]
+/** v9 (D1): which Commercials line an additional-cost category belongs to (mirrors backend engine/costing.py). */
+export type CommercialGroup = 'office_hardware' | 'expenses' | 'misc'
+export const COST_GROUP_OF: Record<string, CommercialGroup> = {
+  office_hardware: 'office_hardware', software: 'office_hardware', hardware: 'office_hardware',
+  expenses: 'expenses', travel: 'expenses', training: 'expenses', third_party: 'expenses',
+  misc: 'misc', other: 'misc',
+}
+export const COMMERCIAL_GROUPS: { key: CommercialGroup; label: string; hint: string; example: string }[] = [
+  { key: 'office_hardware', label: 'Office & hardware', hint: 'Devices, licences, seats, infrastructure', example: 'e.g. Test devices, cloud hosting' },
+  { key: 'expenses', label: 'Expenses', hint: 'Travel, training, third-party services', example: 'e.g. On-site visit, Bhubaneswar → Pune' },
+  { key: 'misc', label: 'Miscellaneous', hint: 'Anything else the project costs', example: 'e.g. Courier, stamp duty' },
 ]
 export const additionalCategoryLabel = (v: string) => ADDITIONAL_COST_CATEGORIES.find((c) => c.value === v)?.label ?? v
 

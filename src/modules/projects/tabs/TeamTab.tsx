@@ -55,7 +55,7 @@ export function TeamTab({ d }: { d: ProjectDetail }) {
       <Card>
         <CardHeader
           title="Allocations"
-          subtitle="Resource allocation by milestone: who works on which milestone (M1, M2…), what % of their time, from and to. All four are required, so cost always lands on a milestone and a period. Hours and cost are on the Costing & margin tab."
+          subtitle="Resource allocation by milestone: who works on which milestone (M1, M2…), what % of their time, from and to. A row on “All milestones” spans the whole project. Hours and cost are on the Costing & margin tab."
           action={editable ? <Button size="sm" variant="primary" icon={<Plus className="size-4" />} onClick={() => setDlg({ open: true, a: null })}>Allocate</Button> : undefined}
         />
           <DataTable

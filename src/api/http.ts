@@ -50,7 +50,7 @@ function headers(): Record<string, string> {
 /** POSTs that only compute or read (previews, quotes, simulations, report runs, sign-in): they change no stored data.
  *  Report runs are queries (report page, builder preview, pinned reports on the dashboard): treating them as writes made
  *  every run refresh every query, which re-ran the report — an endless request loop. (/payroll/run IS a write.) */
-const READ_ONLY_POST = /\/(preview|quote|simulate|check)$|^\/reports\/(?:[^/]+\/)?run$|^\/ai\/|^\/auth\/(login|login\/mfa|logout|reset-request)$/
+const READ_ONLY_POST = /\/(preview|quote|simulate|check)$|^\/reports\/(?:[^/]+\/)?run$|^\/report-types\/[^/]+\/run$|^\/ai\/|^\/auth\/(login|login\/mfa|logout|reset-request)$/ // v9: + report-type runs
 function isWrite(method: string, path: string, opts: RequestOptions): boolean {
   if (method === 'GET' || method === 'HEAD') return false
   if (method === 'POST' && READ_ONLY_POST.test(path)) return false

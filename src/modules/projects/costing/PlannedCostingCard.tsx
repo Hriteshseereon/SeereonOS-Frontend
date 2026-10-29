@@ -43,7 +43,7 @@ export function PlannedCostingCard({ d }: { d: ProjectDetail }) {
     <Card>
       <CardHeader
         title={<span className="inline-flex flex-wrap items-center gap-2">Planned costing {dirty && <Badge size="sm" tone="warning">Unsaved changes</Badge>}</span>}
-        subtitle={q.data.preview.saved_at ? `Saved ${fmtDateTime(q.data.preview.saved_at)}${savedBy ? ` by ${savedBy}` : ''}. Resource rows are this project’s allocations.` : 'Not saved yet. Resource rows are this project’s allocations; add costs, contingency and markup, then save.'}
+        subtitle={q.data.preview.saved_at ? `Saved ${fmtDateTime(q.data.preview.saved_at)}${savedBy ? ` by ${savedBy}` : ''}. Resource rows are this project’s allocations.` : 'Not saved yet. Resource rows are this project’s allocations; add the commercials (office & hardware, expenses, miscellaneous), contingency and profit margin, then save.'}
       />
       <CalendarLine className="mb-4" preview={preview} manDays={t ? { total: t.man_days, rows: t.resource_rows } : null} />
       {Object.keys(errors).length > 0 && <Callout tone="danger" className="mb-3">{Object.values(errors)[0]}</Callout>}
@@ -54,6 +54,8 @@ export function PlannedCostingCard({ d }: { d: ProjectDetail }) {
           preview={preview}
           errors={errors}
           loading={live.isFetching}
+          allowAll
+          showShare
           onChange={(x) => {
             setDraft(x)
             setDirty(true)

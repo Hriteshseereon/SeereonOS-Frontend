@@ -316,6 +316,8 @@ export interface Task extends Base {
   recurrence_of?: ID | null // the task this one repeats
   attachments?: { id: string; name: string; size: number; type: string; data_url?: string | null; uploaded_by: ID; at: string }[]
   parent_task_id?: ID | null // sub-task / follow-up of another task
+  /** v9 (D4): co-assignees besides the owner (absent = none). The owner stays accountable and submits for review. */
+  assignee_ids?: ID[]
 }
 
 export interface TaskDependency extends Base {
@@ -599,6 +601,21 @@ export interface Opening extends Base {
   owner_id: ID
   needed_by: ISODate | null
   notes: string
+  // v9 (D7): job description + public apply link — all optional (absent on older openings)
+  public_token?: string | null
+  accepting_applications?: boolean
+  about?: string
+  responsibilities?: string
+  requirements?: string
+  nice_to_have?: string
+  location?: string
+  work_mode?: 'onsite' | 'hybrid' | 'remote' | null
+  employment_type?: 'full_time' | 'part_time' | 'contract' | 'internship' | null
+  experience_min?: number | null
+  experience_max?: number | null
+  salary_min_paise?: Paise | null
+  salary_max_paise?: Paise | null
+  salary_visible?: boolean
 }
 
 export type Recurrence = 'none' | 'weekly' | 'monthly' | 'quarterly' | 'yearly'

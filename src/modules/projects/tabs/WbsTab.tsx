@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, FileUp, ListTree, Plus } from '@/ui/icons'
 import type { Complexity, TaskTag } from '@/types/entities'
 import { wbsApi, type MilestoneView, type ProjectDetail, type TaskView } from '@/api/projects'
@@ -41,6 +41,20 @@ export function WbsTab({ d }: { d: ProjectDetail }) {
       return n
     })
   const visible = (g: Group) => (hideDone ? g.tasks.filter((t) => t.status !== 'done') : g.tasks)
+  // V9-FIX (item 12): ?milestone=<id> (Insights timelines) scrolls to that milestone, highlights and focuses it
+  const [params] = useSearchParams()
+  const focusMs = params.get('milestone')
+  useEffect(() => {
+    if (!focusMs) return
+    const el = document.getElementById(`ms-${focusMs}`)
+    const target = el && el.offsetParent !== null ? el : document.getElementById(`ms-m-${focusMs}`)
+    if (!target) return
+    target.scrollIntoView({ block: 'center' })
+    target.focus({ preventScroll: true })
+    target.dataset.focus = 'true'
+    const t = window.setTimeout(() => delete target.dataset.focus, 2600)
+    return () => window.clearTimeout(t)
+  }, [focusMs, d.milestones.length])
 
   return (
     <div className="space-y-4">

@@ -1,7 +1,10 @@
-// The planned-price chain, shown the same way everywhere a planned price appears (project costing, create-project
-// calculator, estimates):  Total cost → + Contingency (x%) → Actual cost → + Markup (y%) → Project price.
+// The planned-price chain, shown the same way everywhere a planned price appears (project costing, New Project wizard,
+// cost calculator):  Total cost → + Contingency (x%) → Actual cost → + Profit margin (y% of actual cost) → Price.
+// v9 (D1): the total cost lists its Commercials categories, and both readings of the margin are shown side by side —
+// margin on cost (the % typed, 50% by default) and margin on price (profit ÷ price, 33.3% at 50%).
 // Every amount is the server's (backend costing engine); this component only lays them out.
 import { ArrowRight } from '@/ui/icons'
+import type { CostGroup } from '@/api/projects'
 import { fmtMoneyExact, fmtPct } from '@/domain/money'
 import { cn } from '@/lib/utils'
 
@@ -22,6 +25,8 @@ export interface ChainTotals {
   margin: number | null
   /** profit ÷ actual cost (ratio) */
   markup: number | null
+  /** v9: total cost by Commercials category */
+  groups?: CostGroup[]
 }
 
 const pctLabel = (pct: number | null | undefined) => (pct === null || pct === undefined || !Number.isFinite(pct) ? '—' : `${Number(pct.toFixed(2))}%`)
@@ -46,12 +51,13 @@ export function CostChain({
 }) {
   const mPct = markupPct ?? (t.markup !== null && t.markup !== undefined ? t.markup * 100 : null)
   const other = t.additional !== undefined && t.maintenance !== undefined && t.additional !== null && t.maintenance !== null ? (t.additional ?? 0) + (t.maintenance ?? 0) : null
+  const groupLine = t.groups?.filter((g) => g.amount !== null && (g.amount > 0 || g.key === 'resources')).map((g) => `${g.label} ${fmtMoneyExact(g.amount)}`).join(' · ')
   const steps: { key: string; op: '' | '+' | '='; label: string; value: string; sub?: string; strong?: boolean }[] = [
-    { key: 'total', op: '', label: 'Total cost', value: fmtMoneyExact(t.total_cost), sub: t.resources !== undefined && t.resources !== null && other !== null ? `${fmtMoneyExact(t.resources)} people · ${fmtMoneyExact(other)} other` : 'People, additional costs and maintenance' },
+    { key: 'total', op: '', label: 'Total cost', value: fmtMoneyExact(t.total_cost), sub: groupLine || (t.resources !== undefined && t.resources !== null && other !== null ? `${fmtMoneyExact(t.resources)} people · ${fmtMoneyExact(other)} other` : 'Resources, office & hardware, expenses, miscellaneous') },
     { key: 'cont', op: '+', label: `Contingency (${pctLabel(contingencyPct)})`, value: fmtMoneyExact(t.contingency), sub: 'of total cost' },
     { key: 'actual', op: '=', label: 'Actual cost', value: fmtMoneyExact(t.actual_cost), sub: 'total cost + contingency', strong: true },
-    { key: 'markup', op: '+', label: `Markup (${pctLabel(mPct)})`, value: fmtMoneyExact(t.profit), sub: 'of actual cost' },
-    { key: 'price', op: '=', label: 'Project price', value: fmtMoneyExact(t.price), sub: 'actual cost + markup', strong: true },
+    { key: 'markup', op: '+', label: `Profit margin (${pctLabel(mPct)})`, value: fmtMoneyExact(t.profit), sub: 'of actual cost' },
+    { key: 'price', op: '=', label: 'Price', value: fmtMoneyExact(t.price), sub: 'actual cost + profit', strong: true },
   ]
   return (
     <div className={cn('@container', className)}>
@@ -87,8 +93,8 @@ export function CostChain({
       {/* narrow containers (phones): one stat per row — amounts to the paisa (₹7,33,641.71) don't fit three across */}
       <dl className="mt-3 grid grid-cols-1 gap-2.5 @min-[420px]:grid-cols-3 @min-[420px]:gap-3">
         <Stat label="Profit" value={fmtMoneyExact(t.profit)} sub="price − actual cost" tone={(t.profit ?? 0) < 0 ? 'danger' : undefined} />
-        <Stat label="Planned margin" value={fmtPct(t.margin)} sub="profit ÷ price" tone={belowFloor ? 'danger' : t.margin !== null ? 'success' : undefined} />
-        <Stat label="Markup" value={fmtPct(t.markup)} sub="profit ÷ actual cost" />
+        <Stat label="Margin on cost" value={fmtPct(t.markup)} sub="profit ÷ actual cost" />
+        <Stat label="Margin on price" value={fmtPct(t.margin)} sub="profit ÷ price" tone={belowFloor ? 'danger' : t.margin !== null ? 'success' : undefined} />
       </dl>
     </div>
   )

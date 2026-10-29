@@ -9,4 +9,7 @@ export interface SavedReportView extends E.SavedReport {
   can_edit: boolean
   dataset_label: string
   preview: { labels: string[]; values: number[]; kind: string; value?: number | null; format: string } | null
+  /** v9 (D9): set when the report was saved from a report type; it is re-run with this configuration. */
+  report_type?: string | null
+  report_config?: import('./viz').ReportTypeConfig | null
 }

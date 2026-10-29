@@ -44,7 +44,7 @@ export function AllocationByMilestoneCard({ d, a }: { d: ProjectDetail; a: Costi
     <Card>
       <CardHeader
         title="Resource allocation by milestone"
-        subtitle="Each resource row names a person, the milestone (M1, M2, shown by code), the % of their time, and a from and to date. All four are required, so cost always lands on a milestone and a period."
+        subtitle="Each resource row names a person, the milestone (M1, M2, shown by code), the % of their time, and a from and to date. The milestone can be “All milestones” to span the whole project."
         action={editable ? <Button size="sm" variant="primary" icon={<Plus className="size-4" />} onClick={() => setDlg({ open: true, a: null })}>Add resource</Button> : undefined}
       />
       {!rows.length ? (

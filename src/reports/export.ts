@@ -31,6 +31,10 @@ export interface ExportTable {
   category?: string
   /** ISO date the figures are valid for (default today). */
   asOf?: string
+  /** v9: the filters the figures were computed with (period, project, customer, team, person, status …). */
+  filters?: { label: string; value: string }[]
+  /** v9: caption of the chart (the finding it shows); default "<title> — <subtitle>". */
+  chartTitle?: string
 }
 export type ExportFormat = 'pdf' | 'xlsx' | 'csv'
 
@@ -136,6 +140,8 @@ async function svgToPng(svg: SVGSVGElement): Promise<{ data: string; w: number; 
         if (luminance(cs.getPropertyValue('fill')) > 0.6) d.style.setProperty('fill', '#4a5550')
       }
       if ((el.tagName === 'line' || el.tagName === 'path') && el.closest('.recharts-cartesian-grid') && luminance(cs.getPropertyValue('stroke')) < 0.35) d.style.setProperty('stroke', '#e3e7e5')
+      // doughnut slices are separated by a stroke in the page background colour: white on paper
+      if (el.tagName === 'path' && el.closest('.recharts-pie')) d.style.setProperty('stroke', '#ffffff')
     })
     clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
     clone.setAttribute('width', String(w))
@@ -274,6 +280,15 @@ async function pdfOf(t: ExportTable): Promise<Blob> {
   const meta = `Prepared by ${b.user}   ·   Generated on ${nowLabel()}   ·   Data as of ${dayLabel(t.asOf)}`
   doc.text(doc.splitTextToSize(tx(meta), CW) as string[], M, y)
   y += 8
+  if (t.filters?.length) {
+    // v9: the filters used, so a printed report says exactly what it covers
+    setText(8, INK2, 'bold')
+    doc.text(tx('Filters'), M, y - 3)
+    setText(8, INK2)
+    const fl = doc.splitTextToSize(tx(t.filters.map((f) => `${f.label}: ${f.value}`).join('   ·   ')), CW - 14) as string[]
+    doc.text(fl, M + 14, y - 3)
+    y += fl.length * 3.6 + 3
+  }
 
   /* ---- KPI boxes ---- */
   if (t.kpis?.length) {
@@ -347,7 +362,7 @@ async function pdfOf(t: ExportTable): Promise<Blob> {
         y += 4.5
       }
       setText(8, MUTED)
-      doc.text(tx(`Figure 1. ${t.title}${t.subtitle ? ` — ${t.subtitle}` : ''}`), M, y)
+      doc.text(doc.splitTextToSize(tx(`Figure 1. ${t.chartTitle ?? `${t.title}${t.subtitle ? ` — ${t.subtitle}` : ''}`}`), CW) as string[], M, y)
       y += 7
     }
   }
@@ -537,6 +552,7 @@ async function xlsxOf(t: ExportTable): Promise<Blob> {
   meta('Generated on', nowLabel())
   meta('Data as of', dayLabel(t.asOf))
   meta('Rows', String(t.rows.length))
+  for (const f of t.filters ?? []) meta(`Filter · ${f.label}`, f.value)
   if (t.kpis?.length) {
     r++
     const kh = sum.getCell(`A${r}`)
